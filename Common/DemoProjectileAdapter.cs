@@ -13,24 +13,26 @@ namespace terrarianoita.Common;
 public static class DemoProjectileAdapter
 {
     private const string Spark = "data/entities/projectiles/deck/light_bullet.xml";
+    private const string BlueSpark = "data/entities/projectiles/deck/light_bullet_blue.xml";
     private const string Chainsaw = "data/entities/projectiles/deck/chainsaw.xml";
     public static void Validate(ShotPlan shot)
     {
         foreach (var node in shot.Projectiles)
         {
-            if (node.Entity != Spark && node.Entity != Chainsaw)
+            if (node.Entity != Spark && node.Entity != BlueSpark && node.Entity != Chainsaw)
                 throw new NotSupportedException("The projectile demo cannot render " + node.Entity);
             foreach (var trigger in node.Triggers) Validate(trigger.Payload);
         }
     }
-    public static void Emit(ShotPlan shot, IEntitySource source, Player player, Vector2 position, Vector2 direction)
+    public static void Emit(ShotPlan shot, IEntitySource source, Player player, Vector2 position, Vector2 direction,
+        CastDiagnostics? trace = null, bool debugVisible = false)
     {
         if (direction.LengthSquared() < 0.001f) direction = Vector2.UnitX;
         direction.Normalize();
         foreach (var node in shot.Projectiles)
         {
             bool chainsaw = node.Entity == Chainsaw;
-            double baseDamage = chainsaw ? 13 : 3;
+            double baseDamage = chainsaw ? 13 : node.Entity == BlueSpark ? 4 : 3;
             double addition = shot.Number("damage_projectile_add") + (chainsaw ? shot.Number("damage_slice_add") : 0);
             // Prototype conversion: 25 HP per internal damage unit. Native entity effects are not replicated.
             int damage = Math.Max(1, (int)player.GetTotalDamage(DamageClass.Magic).ApplyTo((float)(baseDamage + addition * 25)));
@@ -38,11 +40,13 @@ public static class DemoProjectileAdapter
             double spread = Math.Clamp(shot.Number("spread_degrees"), -180, 180);
             float angle = MathHelper.ToRadians((float)spread) * Main.rand.NextFloat(-.5f, .5f);
             Vector2 velocity = direction.RotatedBy(angle) * speed;
-            int id = Projectile.NewProjectile(source, position, velocity, ModContent.ProjectileType<NoitaSpark>(), damage, 0, player.whoAmI);
+            Vector2 spawn = chainsaw ? position + direction * 12 : position;
+            int id = Projectile.NewProjectile(source, spawn, chainsaw ? Vector2.Zero : velocity, ModContent.ProjectileType<NoitaSpark>(), damage, 0, player.whoAmI);
             if (id < 0 || id >= Main.maxProjectiles) continue;
             var projectile = Main.projectile[id];
-            projectile.timeLeft = Math.Clamp((chainsaw ? 2 : 40) + (int)shot.Number("lifetime_add"), 1, 3600);
-            ((NoitaSpark)projectile.ModProjectile).Configure(node, chainsaw, direction);
+            projectile.timeLeft = Math.Clamp((chainsaw ? 8 : 40) + (int)shot.Number("lifetime_add"), 1, 3600);
+            ((NoitaSpark)projectile.ModProjectile).Configure(node, chainsaw, direction, trace, debugVisible);
+            trace?.Event($"Spawn {System.IO.Path.GetFileName(node.Entity)} #{id}, damage {damage}, life {projectile.timeLeft} frames");
         }
     }
 }

@@ -79,7 +79,10 @@ function SetProjectileConfigs()
 end
 function RegisterGunShotEffects(...) record('shot_effects', { ... }) end
 function StartReload(frames) record('reload_request', frames) end
-function OnActionPlayed(id) record('action', id) end
+function OnActionPlayed(id)
+    record('action', id)
+    record('action_mana', { id = id, mana = mana })
+end
 function OnNotEnoughManaForAction() record('insufficient_mana', true) end
 function ActionUsed(id) record('action_used', id) end
 function ActionUsesRemainingChanged(id, uses)

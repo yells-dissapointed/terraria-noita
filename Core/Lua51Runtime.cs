@@ -79,6 +79,8 @@ public sealed class Lua51Runtime : IDisposable
     private T Export<T>(string name) where T : Delegate =>
         Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
 
+    public string[] SpellIds() => Evaluate("local ids = {}; for _, a in ipairs(actions) do ids[#ids+1] = a.id end; table.sort(ids); return table.concat(ids, '\\n')").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
     public void Configure(WandConfiguration configuration)
     {
         Check();

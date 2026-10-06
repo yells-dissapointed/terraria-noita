@@ -3,7 +3,7 @@ Items: {
         DisplayName: Noita Wand
         Tooltip:
             '''
-            Left-click to cast; right-click to cycle demonstration decks
+            Left-click to cast; right-click to open the wand editor and cast log
             Uses its own wand mana
             Requires extracted Noita data in mod settings
             Single-player prototype

@@ -3,7 +3,8 @@
 Prebuilt **Windows x64** and **Linux x64** libraries are included. The Linux library
 passed the original-script checks. The Windows DLL was cross-compiled with MinGW
 GCC 13.2.0, checked as PE AMD64, and imports only the Windows system libraries
-KERNEL32.dll and msvcrt.dll. It has not been executed on Windows.
+KERNEL32.dll and msvcrt.dll. The user confirmed the previous build loads and fires on Windows; no automated
+Windows suite has been run. The new UI still needs an in-game playtest.
 
 Both use upstream commit `69e5342eb893815b18a1ec84ba74b0e0d1cc9beb`.
 The Linux build used `make -j2 BUILDMODE=dynamic`; the Windows build used

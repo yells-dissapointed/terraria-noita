@@ -183,6 +183,56 @@ fired = 0;
 runner.Observe(TriggerSignal.Impact, 1, _ => fired++);
 runner.Observe(TriggerSignal.Death, 1, _ => { fired++; runner.Observe(TriggerSignal.Death, 1, _ => fired++); });
 Check(fired == 1, "death payload fires once even during callback reentry");
+var definition = new WandDefinition {
+    Deck = new() { "BURST_2", "LIGHT_BULLET", "DAMAGE", "LIGHT_BULLET" },
+    AlwaysCast = new() { "MANA_REDUCE" }, CastDelay = 20, ReloadTime = 60,
+    ActionsPerRound = 2, ManaMax = 250, ManaRecharge = 75
+};
+var copied = definition.Copy(); copied.Deck.RemoveAt(0); copied.AlwaysCast.Clear();
+Check(definition.Deck.Count == 4 && definition.AlwaysCast.Count == 1, "editor drafts do not alias the equipped definition");
+var savedDefinition = JsonSerializer.Deserialize<WandDefinition>(JsonSerializer.Serialize(definition))!;
+Check(savedDefinition.Deck.SequenceEqual(definition.Deck) && savedDefinition.AlwaysCast.SequenceEqual(definition.AlwaysCast) &&
+      savedDefinition.CastDelay == 20 && savedDefinition.ReloadTime == 60 && savedDefinition.ManaMax == 250 &&
+      savedDefinition.ManaRecharge == 75 && savedDefinition.ActionsPerRound == 2, "saved editor definition preserves order, always cast and stats");
+var invalidDefinition = definition.Copy(); invalidDefinition.Deck.Clear();
+bool invalidDraft = false;
+try { invalidDefinition.Validate(); } catch (ArgumentException) { invalidDraft = true; }
+Check(invalidDraft, "empty deck rejected before applying");
+invalidDefinition = definition.Copy(); invalidDefinition.ManaRecharge = double.NaN; invalidDraft = false;
+try { invalidDefinition.Validate(); } catch (ArgumentException) { invalidDraft = true; }
+Check(invalidDraft, "invalid editor stats rejected");
+using (var runtime = New())
+{
+    var ids = runtime.SpellIds();
+    Check(ids.Length == 422 && ids.Contains("CHAINSAW") && ids.Contains("LIGHT_BULLET"), "editor reads original complete spell catalog");
+    runtime.Configure(savedDefinition.Configuration());
+    var plan = runtime.Cast(250, savedDefinition.AlwaysCast);
+    Check(plan.Root.Projectiles.Count > 0 && plan.Mana > 250 - 30, "edited definition casts with always-cast mana behavior");
+}
+var trace = new CastDiagnostics(); trace.Begin("Preview", new WandDefinition(), 100); trace.Capture(trigger);
+Check(trace.Lines.Any(l => l.Contains("Draw DAMAGE | mana")) && trace.Lines.Any(l => l.Contains("hit_world")), "debug display includes per-action mana and trigger payloads");
+trace.Event("Hit test dummy for 13 damage"); trace.Fail("Unsupported demo entity");
+using (var json = JsonDocument.Parse(trace.Json()))
+{
+    Check(json.RootElement.GetProperty("plan").GetProperty("root").GetProperty("projectiles")[0].GetProperty("triggers")[0].GetProperty("payload").GetProperty("committed").GetBoolean() &&
+          json.RootElement.GetProperty("runtime_events")[0].GetString()!.Contains("dummy") &&
+          json.RootElement.GetProperty("error").GetString()!.Contains("Unsupported"), "export retains full trigger tree, runtime collision events and failures");
+}
+var demoIds = new[] { "LIGHT_BULLET", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TRIGGER_2", "LIGHT_BULLET_TIMER", "CHAINSAW",
+    "BURST_2", "BURST_3", "BURST_4", "DAMAGE", "MANA_REDUCE", "RECHARGE", "SPREAD_REDUCE", "SPEED", "LIFETIME", "LIFETIME_DOWN", "ADD_TRIGGER", "ADD_TIMER", "ADD_DEATH_TRIGGER", "GAMMA" };
+using (var runtime = New())
+{
+    var ids = runtime.SpellIds();
+    foreach (string id in demoIds.Where(ids.Contains))
+    {
+        using var sample = New();
+        sample.Configure(new(new[] { new SpellSlot(id), new SpellSlot("LIGHT_BULLET"), new SpellSlot("LIGHT_BULLET"), new SpellSlot("LIGHT_BULLET") }));
+        var plan = sample.Cast(1000);
+        bool EntitiesSupported(ShotPlan shot) => shot.Projectiles.All(p =>
+            (p.Entity.EndsWith("light_bullet.xml") || p.Entity.EndsWith("light_bullet_blue.xml") || p.Entity.EndsWith("chainsaw.xml")) && p.Triggers.All(t => EntitiesSupported(t.Payload)));
+        Check(EntitiesSupported(plan.Root), "demo palette emits supported entity paths: " + id);
+    }
+}
 Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
 if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 return 0;
