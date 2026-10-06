@@ -1,14 +1,21 @@
-# This file will automatically update with entries for new content after a build and reload.
-# Please read https://github.com/tModLoader/tModLoader/wiki/Localization to learn more about localization and these files.
-
 Items: {
-	NoitaWand: {
-		DisplayName: Noita Wand
-		Tooltip:
-			'''
-			Template of an item
-			Replacing this tooltip is duty 
-			It's snowing on Mt.Fuji
-			'''
-	}
+    NoitaWand: {
+        DisplayName: Noita Wand
+        Tooltip:
+            '''
+            Left-click to cast; right-click to cycle demonstration decks
+            Uses its own wand mana
+            Requires extracted Noita data in mod settings
+            Single-player prototype
+            '''
+    }
+}
+Configs: {
+    NoitaConfig: {
+        DisplayName: Noita compatibility
+        ExtractedDataRoot: {
+            Label: Extracted Noita folder
+            Tooltip: "Absolute path to the folder containing data/scripts/gun/gun.lua. Reload the mod after changing this."
+        }
+    }
 }

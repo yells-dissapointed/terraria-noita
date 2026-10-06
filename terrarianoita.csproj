@@ -10,7 +10,7 @@
 
 	<!-- References -->
 	<ItemGroup>
-		
+		<Compile Remove="Tools/**/*.cs" />
 	</ItemGroup>
 
 </Project>

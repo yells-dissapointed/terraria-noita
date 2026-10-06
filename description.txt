@@ -1,1 +1,1 @@
-Modify this file with a description of your mod.
+Noita wand compatibility prototype: runs original local Noita wand scripts through a LuaJIT 2.0.4 host, with a small single-player projectile demonstration. Requires extracted Noita data configured in mod settings. Right-click the wand to cycle demo decks; craft it with 10 dirt blocks at a workbench. Projectile physics and reload scheduling are approximate.

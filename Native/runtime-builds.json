@@ -1,0 +1,19 @@
+{
+  "upstream": "https://github.com/LuaJIT/LuaJIT",
+  "commit": "69e5342eb893815b18a1ec84ba74b0e0d1cc9beb",
+  "version": "2.0.4",
+  "binaries": [
+    {
+      "file": "libterrarianoita_lua51.so",
+      "target": "linux-x64",
+      "bytes": 482672,
+      "sha256": "4619ed564cfb6422d68cf2dc5acb8eca152ac79903a06ffce41ea24c182e88d3"
+    },
+    {
+      "file": "terrarianoita_lua51.dll",
+      "target": "windows-x64",
+      "bytes": 490664,
+      "sha256": "053d7c6237a5a682bee5e16231ff16795b7caae9112a342ea16c399142e0e7ae"
+    }
+  ]
+}

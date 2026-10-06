@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+Tools/**/bin/
+Tools/**/obj/
+LocalData/
+Native/build/
+*.tmod
+*.log
+__pycache__/
