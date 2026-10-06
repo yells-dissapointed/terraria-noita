@@ -16,7 +16,9 @@ assets are not included in this repository.
    computer. Find the folder that directly contains `data`.
 3. In tModLoader's **Workshop → Develop Mods**, build and reload **Terraria Noita**.
 4. In this mod's settings, set **Extracted Noita folder** to that folder's absolute
-   path. It must contain `data/scripts/gun/gun.lua`. Save and reload the mod.
+   path. You can also select the `data`, `scripts`, or `gun` folder, or `gun.lua`
+   itself. The mod resolves the extracted root and checks all required scripts.
+   Save and reload the mod.
 5. Enter a **single-player** world. Craft the Noita Wand using **10 dirt blocks at
    a workbench**. Left-click to fire and right-click to cycle the five demo decks.
 
@@ -59,7 +61,7 @@ complete action table does **not** establish that every spell is supported.
 - **Persistence/networking:** presets and mana reset when the item is reloaded;
   Lua deck state is retained only during the active item session. Multiplayer,
   a wand editor and saved spell decks are not implemented.
-- **Verification:** the adapter has passed 31 checks using the extracted original
+- **Verification:** the adapter has passed 41 checks, including input paths and the extracted original
   scripts. The mod builds and packages with tModLoader 2026.08.3.0 with zero
   compilation errors or warnings. A graphical in-game playtest and Windows
   runtime execution are still required.
@@ -80,7 +82,8 @@ Noita files are read locally. `Compatibility/reference-build.json` identifies th
 files used for the reference checks without containing their source.
 
 The checks cover draw/configuration behavior, state isolation, nested triggers,
-mana bypass paths, instruction/depth limits, error recovery and trigger callbacks.
+mana bypass paths, instruction/depth limits, error recovery, trigger callbacks,
+root/data/gun/file paths, quoted paths, and incomplete extractions.
 An error invalidates that wand's Lua state; the mod disposes and recreates it.
 The demo validates the entire entity tree before emitting any projectile.
 

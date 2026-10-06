@@ -45,6 +45,7 @@ public sealed class Lua51Runtime : IDisposable
     public Lua51Runtime(string libraryPath, string dataRoot, string bridgeSource)
     {
         if (!Environment.Is64BitProcess) throw new PlatformNotSupportedException("The prototype needs a 64-bit host.");
+        dataRoot = NoitaDataPaths.ResolveRoot(dataRoot);
         try
         {
             library = NativeLibrary.Load(Path.GetFullPath(libraryPath));
@@ -65,7 +66,7 @@ public sealed class Lua51Runtime : IDisposable
             var sources = new StringBuilder("noita_sources = {\n");
             foreach (string relative in SourcePaths)
             {
-                string text = File.ReadAllText(Path.Combine(Path.GetFullPath(dataRoot), relative), Encoding.UTF8);
+                string text = File.ReadAllText(Path.Combine(dataRoot, relative), Encoding.UTF8);
                 if (text.Length > 2_000_000) throw new InvalidDataException("Noita source exceeds import limit.");
                 sources.Append('[').Append(Quote(relative)).Append("]=").Append(Quote(text.TrimStart('\uFEFF'))).Append(",\n");
             }

@@ -19,6 +19,43 @@ void Check(bool condition, string message)
     if (!condition) throw new Exception("FAIL: " + message);
     checks++;
 }
+string originalRoot = NoitaDataPaths.ResolveRoot(data);
+foreach (string input in new[] {
+    originalRoot, Path.Combine(originalRoot, "data"),
+    Path.Combine(originalRoot, "data", "scripts"),
+    Path.Combine(originalRoot, "data", "scripts", "gun"),
+    Path.Combine(originalRoot, "data", "scripts", "gun", "gun.lua") })
+    Check(NoitaDataPaths.ResolveRoot(input) == originalRoot, "data path layout: " + input);
+Check(NoitaDataPaths.ResolveRoot("  \"" + originalRoot + "\"  ") == originalRoot, "quoted path from Copy as path");
+string? priorEnvironment = Environment.GetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT");
+try
+{
+    Environment.SetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT", originalRoot);
+    Check(NoitaDataPaths.ResolveRoot("%TERRARIANOITA_SMOKE_DATA_ROOT%") == originalRoot, "environment variable path");
+}
+finally { Environment.SetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT", priorEnvironment); }
+string fixture = Path.Combine(Path.GetTempPath(), "Noita path checks " + Guid.NewGuid().ToString("N"));
+try
+{
+    bool rejected = false;
+    try { NoitaDataPaths.ResolveRoot(fixture); }
+    catch (DirectoryNotFoundException e) { rejected = e.Message.Contains(fixture); }
+    Check(rejected, "missing configured folder is identified");
+    Directory.CreateDirectory(fixture);
+    File.WriteAllText(Path.Combine(fixture, "data.wak"), "fixture");
+    rejected = false;
+    try { NoitaDataPaths.ResolveRoot(fixture); }
+    catch (FileNotFoundException e) { rejected = e.Message.Contains("extract it first"); }
+    Check(rejected, "packed data gives extraction guidance");
+    string gunFolder = Path.Combine(fixture, "data", "scripts", "gun");
+    Directory.CreateDirectory(gunFolder);
+    File.WriteAllText(Path.Combine(gunFolder, "gun.lua"), "fixture");
+    rejected = false;
+    try { NoitaDataPaths.ResolveRoot(gunFolder); }
+    catch (FileNotFoundException e) { rejected = e.Message.Contains("incomplete") && e.FileName == Path.Combine(gunFolder, "gun_enums.lua"); }
+    Check(rejected, "incomplete extraction identifies the missing dependency");
+}
+finally { if (Directory.Exists(fixture)) Directory.Delete(fixture, true); }
 CastPlan Cast(string name, string[] cards, double mana = 100, string[]? permanent = null, double reload = 40)
 {
     using var runtime = New();
@@ -27,7 +64,7 @@ CastPlan Cast(string name, string[] cards, double mana = 100, string[]? permanen
     output[name] = plan;
     return plan;
 }
-using (var runtime = New())
+using (var runtime = new Lua51Runtime(native, Path.Combine(originalRoot, "data", "scripts", "gun"), bridge))
 {
     Console.WriteLine("Native runtime: " + runtime.RuntimeVersion);
     Check(runtime.Evaluate("return tostring(io == nil and os == nil and package == nil)") == "true", "file/process libraries removed");

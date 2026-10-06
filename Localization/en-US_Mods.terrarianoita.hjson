@@ -15,7 +15,7 @@ Configs: {
         DisplayName: Noita compatibility
         ExtractedDataRoot: {
             Label: Extracted Noita folder
-            Tooltip: "Absolute path to the folder containing data/scripts/gun/gun.lua. Reload the mod after changing this."
+            Tooltip: "Select the extracted Noita root, data folder, gun folder, or gun.lua file. Reload the mod after changing this."
         }
     }
 }
