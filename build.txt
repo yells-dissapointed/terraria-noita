@@ -1,0 +1,3 @@
+displayName = Terraria Noita
+author = yells-dissapointed
+version = 0.1
