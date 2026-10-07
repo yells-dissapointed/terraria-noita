@@ -32,13 +32,15 @@ public sealed class SpellDebugWand : ModItem
     public int Tracking { get; private set; }
     public int Speed { get; private set; }
     public bool Bounce { get; private set; }
-    public string[] ModifierCards => DebugModifiers.Cards(Movement, Tracking, Speed, Bounce);
+    public int EffectModifier { get; private set; }
+    public string[] ModifierCards => DebugModifiers.Cards(Movement, Tracking, Speed, Bounce, EffectModifier);
     private void ModifiersChanged() { Stop(); CleanupCurrent(); Status = "Modifiers: " + (ModifierCards.Length == 0 ? "none" : string.Join(" + ", ModifierCards)) + ". Real cards run before the selected spell; visual mode remains harmless."; }
     public void ChangeMovement() { Movement = (Movement + 1) % DebugModifiers.Movement.Length; ModifiersChanged(); }
     public void ChangeTracking() { Tracking = (Tracking + 1) % DebugModifiers.Tracking.Length; ModifiersChanged(); }
     public void ChangeSpeed() { Speed = (Speed + 1) % DebugModifiers.Speed.Length; ModifiersChanged(); }
     public void ToggleBounce() { Bounce = !Bounce; ModifiersChanged(); }
-    public void ResetModifiers() { Movement = Tracking = Speed = 0; Bounce = false; ModifiersChanged(); }
+    public void ChangeEffectModifier() { EffectModifier = (EffectModifier+1) % DebugModifiers.Effects.Length; ModifiersChanged(); }
+    public void ResetModifiers() { Movement = Tracking = Speed = EffectModifier = 0; Bounce = false; ModifiersChanged(); }
     private Dictionary<string, JsonElement>? defaults;
     private Dictionary<string, SpellCard>? cards;
     private int countdown, manualCooldown;
@@ -117,7 +119,7 @@ public sealed class SpellDebugWand : ModItem
     public void ChangeVisualization()
     {
         Stop(); CleanupCurrent(); VisualPreview = !VisualPreview;
-        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Live gameplay: teleports move you, holes/chainsaws cut terrain, saws can hit you. Unmapped spells stay visual.";
+        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Live gameplay: spell damage, terrain, liquids, status and resource costs are enabled. See report for gaps.";
     }
     public void Restart()
     {
@@ -126,12 +128,17 @@ public sealed class SpellDebugWand : ModItem
     public void CleanupCurrent()
     {
         if (LastTrace == null) return;
+        foreach(var npc in Main.npc) if(npc.active && ReferenceEquals(npc.GetGlobalNPC<SpellSpawnedNPC>().Diagnostics,LastTrace)) npc.active=false;
         foreach (var projectile in Main.projectile)
         {
             if (projectile is { active: true, ModProjectile: NoitaSpark spark } && ReferenceEquals(spark.Diagnostics, LastTrace))
-            { spark.CancelDebugPayloads(); projectile.Kill(); }
+            { spark.CancelDebugPayloads(); projectile.active = false; }
             else if (projectile is { active: true, ModProjectile: NoitaVisualProjectile visual } && ReferenceEquals(visual.Diagnostics, LastTrace))
-            { visual.CancelDebugPayloads(); projectile.Kill(); }
+            { visual.CancelDebugPayloads(); projectile.active = false; }
+            else if (projectile is { active: true, ModProjectile: NoitaComponentProjectile component } && ReferenceEquals(component.Diagnostics, LastTrace))
+                component.RemoveForDebug();
+            else if (projectile is { active: true, ModProjectile: NoitaBlast blast } && ReferenceEquals(blast.Diagnostics, LastTrace))
+                projectile.active = false;
             else if (projectile is { active: true, ModProjectile: NoitaEffectProjectile effect } && ReferenceEquals(effect.Diagnostics, LastTrace))
                 effect.RemoveForDebug();
             else if (projectile is { active: true } && projectile.TryGetGlobalProjectile<TerrariaProjectileBinding>(out var binding) &&
@@ -147,7 +154,7 @@ public sealed class SpellDebugWand : ModItem
             if (Sequence!.Complete) { Stop(); Status = "All selected cases finished. Save report or Restart."; return; }
             CleanupCurrent();
             var manager = ModContent.GetInstance<AdapterSystem>();
-            var test = SpellAudit.RunCase(Sequence.Spell, Sequence.ContextIndex, manager.CreateRuntime, defaults!, manager.Release, ModifierCards);
+            var test = SpellAudit.RunCase(Sequence.Spell, Sequence.ContextIndex, manager.CreateRuntime, defaults!, manager.Release, ModifierCards, CastHost.Snapshot(player));
             var trace = new CastDiagnostics(); LastTrace = trace;
             var definition = new WandDefinition { Deck = test.Deck, AlwaysCast = test.AlwaysCast, ManaMax = 10000 };
             trace.Begin($"Live debug: {test.Spell} / {test.Context}", definition, 10000);
@@ -182,6 +189,7 @@ public sealed class SpellDebugWand : ModItem
             }
             else
             {
+                CastHost.Apply(test.Plan!, player, trace);
                 result.RootProjectilesSpawned = GameplayProjectileAdapter.Emit(test.Plan!.Root, castSource, player, muzzle, aim, trace, true, result);
                 trace.Event($"Terraria integration: {result.RootProjectilesSpawned} root(s); unmapped entities use harmless Noita visuals. Legacy audit status {test.Status} is unchanged.");
                 Status = $"Tested {test.Spell}: {result.RootProjectilesSpawned} root(s); Terraria adapters or Noita visual fallback.";
@@ -216,13 +224,14 @@ public sealed class SpellDebugWand : ModItem
         if (manualCooldown > 0) manualCooldown--;
         if (player.dead || !ReferenceEquals(player.HeldItem.ModItem, this)) Stop();
     }
-    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); tag["fixedSpell"] = (byte)(FixedSpell ? 1 : 0); tag["movement"] = Movement; tag["tracking"] = Tracking; tag["speed"] = Speed; tag["bounce"] = (byte)(Bounce ? 1 : 0); }
+    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); tag["fixedSpell"] = (byte)(FixedSpell ? 1 : 0); tag["effectModifier"] = EffectModifier; tag["movement"] = Movement; tag["tracking"] = Tracking; tag["speed"] = Speed; tag["bounce"] = (byte)(Bounce ? 1 : 0); }
     public override void LoadData(TagCompound tag)
     {
         int mode = tag.GetInt("mode"); Mode = Enum.IsDefined(typeof(SpellDebugMode), mode) ? (SpellDebugMode)mode : SpellDebugMode.FollowedBySparks;
         int interval = tag.GetInt("interval"); Interval = interval is 60 or 120 or 300 or 600 ? interval : 120;
         VisualPreview = !tag.ContainsKey("visualPreview") || tag.GetByte("visualPreview") != 0;
         FixedSpell = tag.ContainsKey("fixedSpell") && tag.GetByte("fixedSpell") != 0;
+        EffectModifier = Math.Clamp(tag.GetInt("effectModifier"),0,DebugModifiers.Effects.Length-1);
         Movement = Math.Clamp(tag.GetInt("movement"), 0, DebugModifiers.Movement.Length - 1);
         Tracking = Math.Clamp(tag.GetInt("tracking"), 0, DebugModifiers.Tracking.Length - 1);
         Speed = Math.Clamp(tag.GetInt("speed"), 0, DebugModifiers.Speed.Length - 1);

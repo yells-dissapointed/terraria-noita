@@ -89,23 +89,23 @@ public sealed class Lua51Runtime : IDisposable
     public void Configure(WandConfiguration configuration)
     {
         Check();
-        if (configuration.Shuffle) throw new NotSupportedException("Shuffle requires Noita-compatible RNG.");
         if (configuration.Slots.Count > 64 || configuration.ActionsPerRound < 1 || configuration.ActionsPerRound > 64 ||
             !double.IsFinite(configuration.CastDelay) || !double.IsFinite(configuration.ReloadTime))
             throw new ArgumentException("Invalid wand configuration.");
         var slots = configuration.Slots.Select(s => new { id = s.Id, uses_remaining = s.UsesRemaining, identified = s.Identified }).ToArray();
         Execute("bridge_configure(" + LuaLiteral(JsonSerializer.SerializeToElement(new {
             slots, cast_delay = configuration.CastDelay, reload_time = configuration.ReloadTime,
-            actions_per_round = configuration.ActionsPerRound, shuffle = false
+            actions_per_round = configuration.ActionsPerRound, shuffle = configuration.Shuffle
         })) + ")");
         configured = true;
     }
 
-    public CastPlan Cast(double mana, IReadOnlyList<string>? permanent = null)
+    public CastPlan Cast(double mana, IReadOnlyList<string>? permanent = null, CastHostContext? context = null)
     {
         Check();
         if (!configured) throw new InvalidOperationException("Configure the wand before casting.");
         if (!double.IsFinite(mana) || mana < 0) throw new ArgumentOutOfRangeException(nameof(mana));
+        if (context != null) Execute("bridge_context(" + LuaLiteral(JsonSerializer.SerializeToElement(context)) + ")");
         string request = LuaLiteral(JsonSerializer.SerializeToElement(new { mana, permanent = permanent ?? Array.Empty<string>() }));
         try { return CastPlan.Parse(Evaluate("return bridge_cast(" + request + ")")); }
         catch { faulted = true; throw; }

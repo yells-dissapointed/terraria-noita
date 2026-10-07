@@ -32,7 +32,8 @@ public sealed class WandEditorState : UIState
     private UITextPanel<string> auditButton = null!;
     private UITextPanel<string> destination = null!, catalogMode = null!, debug = null!;
     private string[] catalog = DemoSpells;
-    private bool alwaysCast, allSpells;
+    private bool alwaysCast, allSpells = true;
+    private UITextPanel<string> shuffle = null!;
     private SpellAudit? audit;
     private bool auditing, auditView;
     private int historyIndex, shownVersion = -1;
@@ -86,13 +87,14 @@ public sealed class WandEditorState : UIState
         }, 396, 136, 88);
         Button(panel, "Older", () => { if (Wand.History.Count > 0) historyIndex = Math.Min(historyIndex + 1, Wand.History.Count - 1); RefreshLog(); }, 490, 136, 64);
         Button(panel, "Newer", () => { historyIndex = Math.Max(0, historyIndex - 1); RefreshLog(); }, 560, 136, 64);
-        status = new UIText("Chainsaw: short-range NPC slice; no block digging. Test experimental spells first.", .62f);
+        shuffle = Button(panel, draft.Shuffle ? "Shuffle ON" : "Shuffle OFF", () => { draft.Shuffle=!draft.Shuffle; shuffle.SetText(draft.Shuffle?"Shuffle ON":"Shuffle OFF"); }, 0,224,106); shuffle.Left.Set(0,.26f);
+        status = new UIText("All 422 cards available. Live component coverage and remaining gaps appear in the report.", .62f);
         Place(status, 0, 171, 0, 24); status.Width.Set(0, 1); panel.Append(status);
         Label(panel, "Spell palette", 0, 198);
         Label(panel, "Ordered slots / always cast", 0, 198).Left.Set(0, .26f);
         logHeading = Label(panel, "Cast log: last 8", 0, 198); logHeading.Left.Set(0, .64f);
         destination = Button(panel, "Add to: Deck", () => { alwaysCast = !alwaysCast; destination.SetText(alwaysCast ? "Add to: Always" : "Add to: Deck"); }, 0, 224, 112);
-        catalogMode = Button(panel, "Demo set", () => { allSpells = !allSpells; catalogMode.SetText(allSpells ? "All / experimental" : "Demo set"); RefreshPalette(); }, 118, 224, 118);
+        catalogMode = Button(panel, "All / experimental", () => { allSpells = !allSpells; catalogMode.SetText(allSpells ? "All / experimental" : "Demo set"); RefreshPalette(); }, 118, 224, 118);
         palette = MakeList(0, .24f); slots = MakeList(.26f, .36f); log = MakeList(.64f, .36f);
         try { catalog = Wand.SpellIds(); }
         catch (Exception e) { Message("Catalog could not load: " + e.Message); }
@@ -116,7 +118,7 @@ public sealed class WandEditorState : UIState
         return list;
     }
     private void RefreshDebug() => debug.SetText(Wand.DebugVisible ? "Debug: ON" : "Debug: OFF");
-    private void RefreshStats() { foreach (var update in refreshStats) update(); }
+    private void RefreshStats() { foreach (var update in refreshStats) update(); shuffle?.SetText(draft.Shuffle?"Shuffle ON":"Shuffle OFF"); }
     private void Message(string message) => status.SetText(message.Length <= 130 ? message : message[..127] + "...");
     private void StartAudit()
     {

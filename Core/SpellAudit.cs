@@ -73,7 +73,7 @@ public sealed class SpellAudit
         return result;
     }
     public static SpellAuditCase RunCase(string spell, int context, Func<Lua51Runtime> create,
-        IReadOnlyDictionary<string, JsonElement> defaults, Action<Lua51Runtime>? dispose = null, IReadOnlyList<string>? modifiers = null)
+        IReadOnlyDictionary<string, JsonElement> defaults, Action<Lua51Runtime>? dispose = null, IReadOnlyList<string>? modifiers = null, CastHostContext? contextSnapshot = null)
     {
         var result = CreateCase(spell, context);
         if (modifiers != null) result.Deck.InsertRange(0, modifiers);
@@ -83,7 +83,7 @@ public sealed class SpellAudit
         {
             result.RuntimeVersion = runtime.RuntimeVersion;
             runtime.Configure(new(result.Deck.Select(id => new SpellSlot(id)).ToArray()));
-            result.Plan = runtime.Cast(10000, result.AlwaysCast);
+            result.Plan = runtime.Cast(10000, result.AlwaysCast, contextSnapshot);
             result.Inspection = DemoCapabilities.Inspect(result.Plan, defaults);
             bool exercised = result.Plan.Events.Any(e => e.Kind == "action" && e.Value.GetString() == result.Spell);
             result.Status = !exercised ? SpellAuditStatus.NotExercised : result.Inspection.Entities.Any(e => !DemoCapabilities.SupportsEntity(e)) ? SpellAuditStatus.Unsupported :

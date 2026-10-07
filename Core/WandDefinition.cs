@@ -9,13 +9,14 @@ public sealed class WandDefinition
 {
     public List<string> Deck { get; set; } = new() { "DAMAGE", "LIGHT_BULLET" };
     public List<string> AlwaysCast { get; set; } = new();
+    public bool Shuffle { get; set; }
     public double CastDelay { get; set; } = 10;
     public double ReloadTime { get; set; } = 40;
     public int ActionsPerRound { get; set; } = 1;
     public double ManaMax { get; set; } = 100;
     public double ManaRecharge { get; set; } = 50;
     public WandDefinition Copy() => new() {
-        Deck = new(Deck), AlwaysCast = new(AlwaysCast), CastDelay = CastDelay,
+        Shuffle = Shuffle, Deck = new(Deck), AlwaysCast = new(AlwaysCast), CastDelay = CastDelay,
         ReloadTime = ReloadTime, ActionsPerRound = ActionsPerRound,
         ManaMax = ManaMax, ManaRecharge = ManaRecharge
     };
@@ -36,6 +37,6 @@ public sealed class WandDefinition
     public WandConfiguration Configuration()
     {
         Validate();
-        return new(Deck.Select(id => new SpellSlot(id)).ToArray(), CastDelay, ReloadTime, ActionsPerRound);
+        return new(Deck.Select(id => new SpellSlot(id)).ToArray(), CastDelay, ReloadTime, ActionsPerRound, Shuffle);
     }
 }

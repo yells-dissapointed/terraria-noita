@@ -38,14 +38,14 @@ var tagType = wt.GetMethod("SaveData")!.GetParameters()[0].ParameterType;
 object wand = Activator.CreateInstance(wt)!, draft = Activator.CreateInstance(dt)!;
 dt.GetProperty("Deck")!.SetValue(draft, new List<string> { "LIGHT_BULLET_TRIGGER", "DAMAGE", "CHAINSAW" });
 dt.GetProperty("AlwaysCast")!.SetValue(draft, new List<string> { "MANA_REDUCE" });
-dt.GetProperty("CastDelay")!.SetValue(draft, 23d); dt.GetProperty("ManaMax")!.SetValue(draft, 250d);
+dt.GetProperty("Shuffle")!.SetValue(draft, true); dt.GetProperty("CastDelay")!.SetValue(draft, 23d); dt.GetProperty("ManaMax")!.SetValue(draft, 250d);
 wt.GetMethod("Apply")!.Invoke(wand, new[] { draft }); wt.GetProperty("DebugVisible")!.SetValue(wand, false);
 object tag = Activator.CreateInstance(tagType)!; wt.GetMethod("SaveData")!.Invoke(wand, new[] { tag });
 object restored = Activator.CreateInstance(wt)!; wt.GetMethod("LoadData")!.Invoke(restored, new[] { tag });
 object def = wt.GetProperty("Definition")!.GetValue(restored)!;
 if (!((List<string>)dt.GetProperty("Deck")!.GetValue(def)!).SequenceEqual(new[] { "LIGHT_BULLET_TRIGGER", "DAMAGE", "CHAINSAW" }) ||
     ((List<string>)dt.GetProperty("AlwaysCast")!.GetValue(def)!).Single() != "MANA_REDUCE" ||
-    (double)dt.GetProperty("CastDelay")!.GetValue(def)! != 23 || (double)dt.GetProperty("ManaMax")!.GetValue(def)! != 250 ||
+    !(bool)dt.GetProperty("Shuffle")!.GetValue(def)! || (double)dt.GetProperty("CastDelay")!.GetValue(def)! != 23 || (double)dt.GetProperty("ManaMax")!.GetValue(def)! != 250 ||
     (double)wt.GetProperty("Mana")!.GetValue(restored)! != 100 || (bool)wt.GetProperty("DebugVisible")!.GetValue(restored)!)
     throw new Exception("Saved item data mismatch");
 Console.WriteLine("PASS: actual TagCompound round-trip preserves deck, always cast, stats, mana and debug preference");
@@ -168,7 +168,7 @@ parameters[0].ParameterType.GetProperty("Entity")!.SetValue(bombNode, "data/enti
 ((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(nativeTree)!).Add(bombNode);
 gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree });
 object unsupported = Activator.CreateInstance(parameters[0].ParameterType)!;
-parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/megalaser.xml");
+parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/unported_fixture.xml");
 object nested = Activator.CreateInstance(triggerType)!;
 object payload = triggerType.GetProperty("Payload")!.GetValue(nested)!;
 ((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(payload)!).Add(unsupported);
@@ -223,4 +223,41 @@ velocityField.SetValue(nativeProjectile, untouchedVelocity);
 unboundMotion.GetType().GetMethod("PostAI")!.Invoke(unboundMotion, new[] { nativeProjectile });
 if (!untouchedVelocity.Equals(velocityField.GetValue(nativeProjectile))) throw new Exception("Unbound vanilla projectile movement changed");
 Console.WriteLine("PASS: unbound vanilla projectile movement remains untouched");
+
+var flaskType=mod.GetType("terrarianoita.Content.Items.MaterialFlask")!;
+object flask=Activator.CreateInstance(flaskType)!;
+object contents=flaskType.GetProperty("Contents")!.GetValue(flask)!;
+var contentsType=contents.GetType();
+contentsType.GetMethod("Add")!.Invoke(contents,new object[]{"water",600});
+contentsType.GetMethod("Add")!.Invoke(contents,new object[]{"oil",400});
+object flaskTag=Activator.CreateInstance(tagType)!;flaskType.GetMethod("SaveData")!.Invoke(flask,new[]{flaskTag});
+object restoredFlask=Activator.CreateInstance(flaskType)!;flaskType.GetMethod("LoadData")!.Invoke(restoredFlask,new[]{flaskTag});
+object restoredContents=flaskType.GetProperty("Contents")!.GetValue(restoredFlask)!;
+var mixture=(Dictionary<string,int>)contentsType.GetProperty("Materials")!.GetValue(restoredContents)!;
+if(mixture.Count!=2||mixture["water"]!=600||mixture["oil"]!=400)throw new Exception("Packaged flask loses mixed contents on save/load");
+Console.WriteLine("PASS: actual flask TagCompound preserves mixed liquid quantities");
+object clonedFlask=flaskType.GetMethod("Clone")!.Invoke(flask,new[]{Activator.CreateInstance(itemType)!})!;
+object clonedContents=flaskType.GetProperty("Contents")!.GetValue(clonedFlask)!;
+contentsType.GetMethod("Remove")!.Invoke(clonedContents,new object[]{"oil",400});
+if((int)contentsType.GetProperty("Total")!.GetValue(contents)! !=1000)throw new Exception("Cloned flask aliases original liquid quantities");
+Console.WriteLine("PASS: actual flask clone owns independent contents");
+var componentType=mod.GetType("terrarianoita.Content.Projectiles.NoitaComponentProjectile")!;
+object component=Activator.CreateInstance(componentType)!;object componentProjectile=Activator.CreateInstance(entity.PropertyType)!;entity.SetValue(component,componentProjectile);
+componentType.GetMethod("SetDefaults")!.Invoke(component,null);
+var componentProfileType=mod.GetType("terrarianoita.Core.ComponentSpellProfile")!;object componentProfile=Activator.CreateInstance(componentProfileType)!;
+componentProfileType.GetField("AreaRadius")!.SetValue(componentProfile,28d);
+componentType.GetMethod("Configure")!.Invoke(component,new object?[]{componentProfile,node,nativeTree,direction,null,null,visualEvidence});
+if((int)ptype.GetField("width")!.GetValue(componentProjectile)! !=56 || (bool)componentType.GetMethod("CanDamage")!.Invoke(component,null)!)throw new Exception("Zero-damage field has wrong geometry or can damage");
+Console.WriteLine("PASS: packaged zero-damage field keeps imported radius without becoming damaging");
+componentType.GetMethod("RemoveForDebug")!.Invoke(component,null);
+componentType.GetMethod("OnKill")!.Invoke(component,new object[]{0});
+if((bool)ptype.GetField("active")!.GetValue(componentProjectile)! || componentType.GetField("triggers",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(component)!=null)throw new Exception("Component cleanup can execute payloads or a blast");
+Console.WriteLine("PASS: component cleanup suppresses blast/material/payload death effects");
+var augmentType=mod.GetType("terrarianoita.Common.SpellAugmentBinding")!;object unboundAugment=Activator.CreateInstance(augmentType)!;
+ptype.GetField("damage")!.SetValue(nativeProjectile,77);augmentType.GetMethod("PostAI")!.Invoke(unboundAugment,new[]{nativeProjectile});augmentType.GetMethod("OnKill")!.Invoke(unboundAugment,new object[]{nativeProjectile,0});
+if((int)ptype.GetField("damage")!.GetValue(nativeProjectile)! !=77)throw new Exception("Unbound vanilla projectile modified by augments");
+Console.WriteLine("PASS: unbound native projectiles bypass new augment physics and death effects");
+debugType.GetMethod("ChangeEffectModifier")!.Invoke(debugWand,null);debugType.GetMethod("SaveData")!.Invoke(debugWand,new[]{debugTag});debugType.GetMethod("LoadData")!.Invoke(debugRestored,new[]{debugTag});
+if((int)debugType.GetProperty("EffectModifier")!.GetValue(debugRestored)! !=1 || !((string[])debugType.GetProperty("ModifierCards")!.GetValue(debugRestored)!).Contains("FREEZE"))throw new Exception("Debug elemental modifier not persisted");
+Console.WriteLine("PASS: debug effect modifier is a real saved FREEZE card");
 return 0;

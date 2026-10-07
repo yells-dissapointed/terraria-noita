@@ -12,10 +12,10 @@ namespace terrarianoita.Common;
 
 public static class GameplayProjectileAdapter
 {
-    public static string DescribeGap(string missing) => missing.StartsWith("Entity: ", StringComparison.Ordinal) && TerrariaSpellMatches.Find(missing[8..]).Implemented ?
+    public static string DescribeGap(string missing) => missing.StartsWith("Entity: ", StringComparison.Ordinal) && (TerrariaSpellMatches.Find(missing[8..]).Implemented || SpellEffectProfile.Supports(missing[8..]) || ComponentSpellAdapter.Supports(missing[8..])) ?
         "LEGACY AUDIT GAP, now covered by gameplay adapter: " + missing :
         missing.StartsWith("Config: extra_entities", StringComparison.Ordinal) || missing.StartsWith("Config: bounces", StringComparison.Ordinal) ?
-        "LEGACY AUDIT FIELD; see per-entity movement sources/gaps: " + missing : "NOT IMPLEMENTED: " + missing;
+        "LEGACY AUDIT FIELD; see per-entity movement sources/gaps: " + missing : "LEGACY AUDIT GAP; inspect active adapter coverage: " + missing;
     public static int VanillaType(TerrariaSpellPrototype prototype) => prototype switch {
         TerrariaSpellPrototype.Bomb => ProjectileID.Bomb, TerrariaSpellPrototype.Arrow => ProjectileID.WoodenArrowFriendly,
         TerrariaSpellPrototype.Bullet => ProjectileID.Bullet, TerrariaSpellPrototype.Rocket => ProjectileID.RocketI,
@@ -25,7 +25,7 @@ public static class GameplayProjectileAdapter
     {
         foreach (var node in shot.Projectiles)
         {
-            if (!DemoCapabilities.SupportsEntity(node.Entity) && !TerrariaSpellMatches.Find(node.Entity).Implemented)
+            if (!DemoCapabilities.SupportsEntity(node.Entity) && !TerrariaSpellMatches.Find(node.Entity).Implemented && !ComponentSpellAdapter.Supports(node.Entity))
                 throw new NotSupportedException("Gameplay adapter unavailable for " + node.Entity + "; use the debug wand visual preview");
             foreach (var trigger in node.Triggers) Validate(trigger.Payload);
         }
@@ -34,14 +34,21 @@ public static class GameplayProjectileAdapter
         CastDiagnostics? trace = null, bool debugVisible = false, SpellLiveCase? result = null)
     {
         if (direction.LengthSquared() < .001f) direction = Vector2.UnitX;
-        direction.Normalize(); int spawned = 0;
+        direction.Normalize(); int spawned = 0, nodeIndex = 0; Vector2 baseDirection = direction;
         foreach (var node in shot.Projectiles)
         {
+            float pattern = MathHelper.ToRadians((float)Math.Clamp(shot.Number("pattern_degrees"),-360,360));
+            direction=baseDirection.RotatedBy(shot.Projectiles.Count>1 ? pattern*(nodeIndex/(float)(shot.Projectiles.Count-1)-.5f) : 0);nodeIndex++;
             var single = new ShotPlan { Committed = true, Config = shot.Config, Projectiles = new() { node } };
             var match = TerrariaSpellMatches.Find(node.Entity);
             if (SpellEffectProfile.Supports(node.Entity))
             {
                 spawned += SpellEffectAdapter.Emit(shot, node, source, player, position, direction, trace, debugVisible, result);
+                continue;
+            }
+            if (!match.Implemented && !DemoCapabilities.SupportsEntity(node.Entity) && ComponentSpellAdapter.Supports(node.Entity))
+            {
+                spawned += ComponentSpellAdapter.Emit(shot, node, source, player, position, direction, trace, result);
                 continue;
             }
             if (!match.Implemented)
@@ -86,11 +93,12 @@ public static class GameplayProjectileAdapter
             result?.VisualEntities.Add(evidence);
             projectile.GetGlobalProjectile<TerrariaProjectileBinding>().Configure(projectile, node, direction, trace, result, evidence, profile, match.UseNoitaSprite, debugVisible);
             projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, trace, evidence);
+            projectile.GetGlobalProjectile<SpellAugmentBinding>().Configure(projectile, shot, trace, evidence);
             trace?.Event($"Terraria {match.TerrariaProjectile} for {System.IO.Path.GetFileName(node.Entity)} #{id}: damage {damage}, life {projectile.timeLeft}; {match.Notes}");
             spawned++;
         }
         return spawned;
     }
     private static bool HasUnmappedChild(ProjectilePlan node) => node.Triggers.Any(t => t.Payload.Projectiles.Any(p =>
-        (!DemoCapabilities.SupportsEntity(p.Entity) && !TerrariaSpellMatches.Find(p.Entity).Implemented) || HasUnmappedChild(p)));
+        (!DemoCapabilities.SupportsEntity(p.Entity) && !TerrariaSpellMatches.Find(p.Entity).Implemented && !ComponentSpellAdapter.Supports(p.Entity)) || HasUnmappedChild(p)));
 }

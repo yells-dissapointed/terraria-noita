@@ -110,8 +110,9 @@ public class NoitaWand : ModItem
         var trace = BeginTrace("Live cast #" + ++castCount, Definition, mana);
         try
         {
-            var plan = Runtime().Cast(mana, Definition.AlwaysCast); trace.Capture(plan);
+            var plan = Runtime().Cast(mana, Definition.AlwaysCast, CastHost.Snapshot(player)); trace.Capture(plan);
             GameplayProjectileAdapter.Validate(plan.Root);
+            CastHost.Apply(plan, player, trace);
             mana = Math.Clamp(plan.Mana, 0, Definition.ManaMax);
             cooldown = Math.Max(1, (int)Math.Ceiling(Math.Max(plan.Root.Number("fire_rate_wait"), plan.ReloadRequest ?? 0)));
             Vector2 hand = player.RotatedRelativePoint(player.MountedCenter);

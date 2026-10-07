@@ -1,287 +1,157 @@
-# Terraria Noita wand prototype
+# Terraria Noita — v0.8.0
 
-This prototype executes the original wand Lua scripts from your own extracted
-Noita installation inside tModLoader. The C# bridge receives a completed cast
-plan and renders a small demonstration in Terraria. Original Noita code and
-assets are not included in this repository.
+This single-player tModLoader mod executes the original wand Lua from your own
+extracted Noita installation and translates the resulting casts into Terraria
+projectiles, effects and materials. Original Noita scripts and artwork are loaded
+locally; they are not bundled or redistributed with the mod.
 
-v0.7.0 retains 1.75× original Noita sprites while drawing Terraria artwork at
-its native 1× size. It adds teleport, black-hole, tentacle and saw gameplay plus
-combinable debug movement/tracking/speed/bounce modifiers. See
-[DEBUG_WAND.md](DEBUG_WAND.md) for the live-report findings and focused tests.
+v0.8.0 adds a shared XML gameplay interpreter, persisted custom materials,
+refillable mixed-liquid flasks, randomized/shuffle casts and a larger debug kit.
+It is a substantial playable adaptation, not the native Noita engine.
 
-## Terraria matches and fixed testing (v0.7.0)
+## Install the built mod
 
-See [TERRARIA_MATCHES.md](TERRARIA_MATCHES.md) for the reviewed mapping inventory.
-The first pass enables Bomb → Bomb, Arrow → WoodenArrowFriendly, basic/heavy/slow
-bolts → Bullet, and Rocket → RocketI. Their Terraria behavior is a prototype
-substitution, with Noita fuse/damage/speed/lifetime mapped where supported.
-Ten custom entity adapters add four teleport variants, Black Hole and Super
-Black Hole, Tentacle and three sawblade sizes while retaining original Noita
-artwork. Chainsaw now cuts ordinary touching terrain. Native material/Verlet
-physics and unimplemented entity scripts remain deferred.
-The debug wand can hold one selected spell/context for manual or automatic
-repeated tests. Live Bombs can alter terrain; harmless XML preview remains the
-default. Choose movement, tracking, speed and bounce independently in debug
-controls; these insert real Noita cards into the test deck. See
-[DEBUG_WAND.md](DEBUG_WAND.md) for the exact controls, limits and tests.
+1. In tModLoader, choose **Mods → Open Mods Folder**, then close the game.
+2. Replace `terrarianoita.tmod` in that folder with the new build. Restart
+   tModLoader and enable **Terraria Noita 0.8.0**.
+3. Keep **Extracted Noita folder** pointed at your existing extracted files.
+   The setting accepts the extracted root, `data`, `scripts`, `gun`, or `gun.lua`.
+4. Enter a single-player world and type **`/noita kit`** in chat. This gives the
+   normal wand, debug wand, empty material flask and unlimited debug flask.
+5. The wand tooltip and debug panel show the loaded version. **Loaded file**
+   prints its exact path when diagnosing duplicate or stale mod installations.
 
-## Try it
+The normal wand can also be crafted from 10 dirt at a workbench; the debug wand
+and debug flask each cost one dirt there. An empty material flask uses one Bottle.
+Windows x64 and Linux x64 LuaJIT runtimes are included. macOS needs a native build;
+see [Native/README.md](Native/README.md).
 
-1. Clone this branch into your tModLoader `ModSources` folder, naming the folder
-   **`terrarianoita`**. The folder name is the mod's internal name:
-   ```sh
-   git clone -b feature/noita-lua-adapter https://github.com/yells-dissapointed/terraria-noita.git terrarianoita
-   ```
-2. Extract the previously supplied `Noita-extracted-data.zip` somewhere on your
-   computer. Find the folder that directly contains `data`.
-3. In tModLoader's **Workshop → Develop Mods**, build and reload **Terraria Noita**.
-4. In this mod's settings, set **Extracted Noita folder** to that folder's absolute
-   path. You can also select the `data`, `scripts`, or `gun` folder, or `gun.lua`
-   itself. The mod resolves the extracted root and checks all required scripts.
-   Save and reload the mod.
-5. Enter a **single-player** world. Craft the Noita Wand using **10 dirt blocks at
-   a workbench**. Left-click to fire and right-click to open the wand editor / cast log.
+## What works in this build
 
-Windows x64 and Linux x64 LuaJIT libraries are included. macOS requires building
-an appropriate native library; it has not been validated. See [Native/README.md](Native/README.md).
-The wand starts with its own 100 mana pool, displayed in its tooltip.
+- **Wands:** all 422 cards in the editor, ordered decks, always-cast cards, shuffle,
+  mana, draw recursion, late modifiers, multicast spread, timers and impact/death
+  payloads. Each ordinary wand keeps its own Lua deck/discard state while loaded.
+- **Projectiles:** the shared interpreter reads XML movement, contact damage,
+  damage types, healing, bounces, lifetimes, homing, explosions, plasma/lightning
+  rays, digging, material emitters, conversion and area statuses. Imported entity
+  Lua remains unexecuted; selected script behaviors have explicit C# adapters.
+- **Special effects:** teleport variants, swapper, black/white holes including
+  large and giga variants, tentacles/portals, saws, death crosses, charged beams,
+  projectile conversion spells, destruction, mass polymorph and worm rain.
+- **Modifiers:** speed, gravity, crit chance, knockback, wave/spiral/ping-pong and
+  angular paths, cursor/enemy/caster homing, piercing, phasing, freezing,
+  electricity, material trails, matter eating, damage fields and selected
+  conversion/shield/lifetime effects. See coverage data for deferred extras.
+- **Materials:** 466 imported definitions, including 102 scoopable liquids with
+  inherited names, colors and status metadata. Native water/lava/honey/shimmer
+  use Terraria liquid simulation. Other fluids use saved, flowing tile cells.
+  Selected reactions include ignition, water extinguishing and acid corrosion.
+  Material identity is imported more broadly than chemical behavior.
+- **Flasks:** 1,000-unit capacity, mixed contents, hold right-click to scoop and
+  hold left-click to pour near the cursor. Only accepted amounts transfer;
+  full or blocked pours retain the rest. Contents survive saving and cloning.
+- **Resource cards:** blood magic and blood-to-power spend actual health;
+  money magic spends inventory coins; conditionals read player health and nearby
+  entities; Zeta reads other carried Noita wands. Cessation grants a short
+  invulnerable/invisible interval with item use blocked.
 
-## Editor and debugging (v0.7.0)
+Native Terraria sprites remain **1×**; original Noita sprites remain **1.75×**.
+Beam and fallback geometry uses explicit pixel dimensions to avoid screen-sized
+stretching. The sprite cache accommodates a full scan while retaining its pixel
+memory limit. Effects with native particle-only artwork use adapted particles or
+rings when no usable original sprite exists.
 
-Right-click while holding a wand. Changes are made to a draft until you click
-**Apply**. Choose spells from the palette to append slots; use the up/down buttons
-to reorder them, **X** to remove them, and **Always / To deck** to move cards
-between the regular deck and always-cast slots. Edit cast delay, reload frames,
-actions per cast, mana capacity and mana recharge with the plus/minus controls.
-Applied deck order, always-cast cards, stats, mana and debug preference are saved
-with each item. Closing or switching items discards unapplied edits.
+## In-game editing and debugging
 
-The default palette includes the spark/chainsaw demo and new Bomb, Arrow,
-Magic arrow/bolt/sphere, Rocket, teleports, Black Holes, Tentacle, sawblades and
-supported movement/homing modifier cards. **All / experimental** exposes the complete original
-422-spell table. Other spells may fail because their native APIs or entity
-renderers are unavailable. This is a development editor with unrestricted card
-selection, not a spell acquisition or inventory system.
+Right-click the normal wand to edit a draft. Reorder cards, choose always-casts,
+adjust mana/timing/draw stats and toggle shuffle, then **Apply**. **Test draft**
+records a fresh cast without changing world resources. Edited definitions and
+mana are saved; Lua deck/discard position resets on reload/clone/edit.
 
-**Test draft** starts a separate, fresh Lua state with the draft's full mana
-capacity and records a cast without
-spending the live wand's mana, advancing its live deck or spawning projectiles.
-Use the cast log to inspect draw order, per-action mana, skipped cards, reload
-requests, shot modifiers and nested trigger payloads. A supported entity path
-does not imply every native component or modifier effect has been replicated.
-**Older / Newer** inspect the last eight tests or live casts. **Save log** writes
-the complete cast plan and collision/trigger events as JSON under
-`<tModLoader save folder>/terrarianoita/debug/`; the exact path is printed in chat.
+Right-click the debug wand for controls. **XML/sprite preview is harmless by
+default.** Switch to **Terraria integration (live)** to execute effects. Live
+spells can damage the caster, spend resources, change terrain and leave liquids.
+Use **Fixed spell** to repeat one selection; Previous/Next and **Presets >** choose
+cards. Movement, tracking, speed, bounce and effect choices insert real Noita
+modifier cards before the selected spell.
 
-**Debug: ON** shows a small live HUD and yellow projectile hitbox outlines. Sparks
-are drawn at their hitbox centers and originate 16 pixels from the player's hand,
-or at the hand if a wall blocks that offset. Chainsaw is a visible stationary
-28×28 NPC damage area just in front of the muzzle, lasting at least the demo's
-base 8 frames before lifetime modifiers. It cuts ordinary touching terrain at
-the XML 3-pixel radius, approximated on Terraria's tile grid. Native material
-effects remain different.
+The debug kit supports these chat commands:
 
-## Separate live debugging wand (v0.7.0)
-
-Craft **Spell Debug Wand** with **one dirt block at a workbench**. It is a cyan
-variant of the wand. Left-click casts the selected test case and advances to the
-next spell. Right-click opens a compact scan panel with Previous/Next, Test
-current, Start/Stop auto, context, interval, Restart, Clear shots and Save report.
-Automatic mode waits 1, 2, 5 or 10 seconds between cases and stops after one scan.
-Switching away stops auto; opening inventory/chat pauses it. Auto is never
-restored from saved items or clones.
-
-The default context adds four spark bolts after the tested spell, so modifiers
-and trigger payloads have something to act on. Choose Solo, Always cast or All
-three contexts to inspect different behavior. Every case starts with a fresh
-non-shuffle deck, unlimited uses and 10000 test mana. The ordinary wand's mana
-and deck are unaffected. **XML/sprite preview (harmless)** is the default: it
-loads original local sprites and basic XML motion/lifetime settings for emitted
-entities. Missing graphics use orange labeled entity markers. Cyan diagnostic
-cards identify no output, Lua errors or unexercised targets and do not count as
-emitted roots. Preset buttons make targeted rendering/trigger tests easy.
-**Terraria integration (live)** reuses actual Bomb, Arrow, Bullet and Rocket
-projectiles for six mapped Noita entity paths and custom effects for ten more,
-while unmapped paths stay harmless
-Noita visual previews. Select **Fixed spell** to repeat the same spell/context
-with manual firing or auto; Cycle spells restores advancing tests. Movement,
-Tracking, Speed and Bounce controls combine actual original modifier cards.
-Preferences survive save/load while the scan/report reset and auto stays off.
-Live teleports alter location, cutters alter terrain and saws/Super Black Hole
-can hurt the caster. Harmless preview only applies supported motion adapters.
-
-Before each case, the tool removes its own previous projectiles and suppresses
-cleanup-triggered payloads. Longer lifetimes/timers may therefore be truncated
-by the chosen interval. Live JSON reports include attempted recipes, missing
-effects, actual root spawn counts, separate diagnostic-card counts, full imported
-XML source nodes, per-entity profiles/visual evidence, later collision/trigger events, the loaded
-mod version and its file path. Reports are saved under
-`<tModLoader save folder>/terrarianoita/debug/`. Auto completion saves after the
-last observation interval; Save report also works during or after a run.
-
-Both wand tooltips, the editor heading and the live debug HUD show the loaded
-version. **Loaded file** prints the exact active `.tmod` path in chat. The
-startup log also records version, build ID and loaded file. If the game still
-shows 0.2.0, it is not running this package. Close tModLoader, replace the package
-in the folder opened by **Mods → Open Mods Folder**, and restart. Building an
-older `ModSources` checkout later recreates its older package; update that
-checkout before using Build + Reload.
-
-## What is imported, and what still needs implementation
-
-The host imports original Noita **wand/spell Lua**, complete entity XML source
-nodes/attributes and original PNG/sprite-sheet metadata from local extracted
-files. The importer resolves bases, component overrides/removal and retains
-unmapped data. The debug wand visualizes emitted entities using original sprites
-or clearly labeled markers, approximate speed/gravity/drag/lifetime, and
-already-built trigger payloads. The ordinary wand also uses original sprites
-for its spark/blue-spark/chainsaw demo, alongside six mapped vanilla projectile
-paths and ten explicit custom teleport/black-hole/tentacle/saw effect paths.
-Bomb/Arrow use native-sized Terraria sprites; bullet variants and Rocket preserve
-Noita artwork while using Terraria behavior. Custom effects retain original
-sprites/segments or explicitly labeled fallback graphics. Native entity Lua
-scripts are inspected as data; their selected behaviors are C# adapters.
-
-The supplied-data audit loaded **197 emitted entity definitions**, **93 with
-usable sprite metadata** and **104 marker-only**. This establishes data/frame
-coverage, not GPU rendering or native behavior. See [DEBUG_WAND.md](DEBUG_WAND.md)
-for useful in-game tests and report meanings. The native engine and most
-component behavior are deferred: explosions/material interactions, statuses,
-particles, physics bodies, audio and arbitrary entity Lua scripts need further
-implementation. Explicit terrain cutters, landing, constrained tentacles, saw
-paths and bounded homing/movement adapters are now implemented; they do not
-provide full native simulation. Merely loading a definition does not execute those systems.
-
-## Automatic spell audit
-
-**Audit all** runs three isolated casts for every spell without spawning anything
-or changing your live wand. **Results** shows the outcomes; click a spell to load
-its best tested sequence into a draft and preview it. **Stop audit** retains
-partial results, and **Save audit** exports full JSON. Completion saves
-automatically. Keep the editor open while the audit runs.
-
-The reference run covered **422 spells / 1266 casts** and found **190 spells with
-at least one drawable setup**, all with missing effects. The audit distinguishes
-renderable trees with gaps, unsupported entities, native API errors, no-projectile
-utility cases and unexercised cards. These outcomes describe prototype coverage;
-they do not prove full Noita functionality or visual fidelity. Preview logs now
-list ignored configuration and effect fields, rather than checking entity paths
-alone. See [SPELL_AUDIT.md](SPELL_AUDIT.md) for counts, limits and reproduction.
-
-Spark and chainsaw drawing now normalizes the pixel texture dimensions, fixing
-the oversized red stripe caused by scaling an entire texture as a single pixel.
-
-## What this preserves
-
-The original Lua handles action execution, draw recursion, mana accounting, deck
-and discard state, modifiers, always-cast cards and trigger payload construction.
-Each wand has its own Lua state. After a complete draw, the bridge snapshots the
-shot configuration and builds a tree of projectiles and nested trigger payloads.
-
-This captures the tested script-level quirks: late modifiers affect all projectiles
-in a multicast, chainsaw order changes cast delay, insufficient mana skips cards,
-negative mana costs add mana, always-cast cards suppress their normal draw, and
-trigger payloads use a fresh configuration and consume mana during the initial
-cast. Already-built payloads fire once when their Terraria carrier collides,
-expires or reaches its timer; impact does not execute the wand again.
-
-The host and editor can run custom decks. Only actions whose
-native API requirements are supplied by the bridge will work. Loading Noita's
-complete action table does **not** establish that every spell is supported.
-
-## Scope and remaining work
-
-- **Entity visualization:** the debug wand imports full XML data and sprite
-  metadata with bounded approximate movement and neutral contact/payload tests.
-  Labels distinguish missing graphics from failed/no-output casts. The gameplay
-  adapter adds six vanilla-backed and ten custom effect paths to
-  spark/blue-spark/chainsaw. The debug controls inject real movement/homing cards.
-  The native Noita components/material simulation remains deferred; the Bomb
-  adapter uses Terraria's real terrain explosion. Black Holes and Chainsaw cut
-  ordinary tiles under Terraria explosion/kill restrictions. Important tiles
-  and fluids stay intact; cleanup cancels future effects but cannot undo cuts.
-- **Scheduling:** the host records raw reload requests, including fractions and
-  negatives. The demo uses an approximate cooldown. Noita's native integer
-  conversion and complete reload/frame scheduling are not reproduced.
-- **RNG:** shuffle is disabled; actions that require native RNG fail explicitly.
-- **Runtime:** upstream LuaJIT 2.0.4 matches the version identified in the supplied
-  Noita DLL, but it is a separately built 64-bit runtime. Vendor modifications,
-  architecture differences and native engine behavior are not established.
-  JIT compilation is disabled so instruction-count limits cover loops.
-- **Persistence/networking:** edited definitions and mana are saved with the item.
-  The active Lua draw/discard position resets after loading, cloning or applying
-  edits. Multiplayer is not implemented.
-- **Verification:** 406 original-script, asset, landing, bounded movement, modifier recipe and
-  diagnostic checks pass in the standalone harness, including all 128 debug
-  modifier combinations executed through original Lua. Nineteen additional checks against the
-  packaged mod verify real tModLoader item save/load, cloning, the chainsaw
-  damage hitbox, packaged sprite geometry, build identity, debug-item persistence,
-  clone isolation, harmless XML visualization, mixed payload validation, modifier
-  persistence and custom effect cleanup cancelling pending teleports/payloads. The mod builds and packages with tModLoader 2026.08.3.0 with zero
-  compilation errors or warnings. The user confirmed v0.6.0 native adapters work on Windows. The v0.7.0
-  effects and graphics still need a graphical in-game playtest.
-
-Next priorities are the imported sprite/trigger playtest, choosing per-spell
-behavior from debug reports, then component execution and recovered native APIs.
-
-## Standalone checks
-
-With .NET 8 installed, run from the repository root:
-
-```sh
-dotnet run --project Tools/AdapterSmoke -- Native/libterrarianoita_lua51.so /absolute/path/to/extracted-noita Compatibility/bridge.lua results.json
-```
-
-On Windows, substitute `Native/terrarianoita_lua51.dll` for the library argument.
-For packaged item persistence, clone isolation and chainsaw configuration checks:
-
-```sh
-dotnet run --project Tools/ModSmoke -- /absolute/path/to/terrarianoita.tmod /absolute/path/to/tModLoader
-```
-Noita files are read locally. `Compatibility/reference-build.json` identifies the
-files used for the reference checks without containing their source.
-
-The checks cover draw/configuration behavior, state isolation, nested triggers,
-mana bypass paths, instruction/depth limits, error recovery, trigger callbacks,
-root/data/gun/file paths, quoted paths, incomplete extractions, saved editor
-definitions, per-action mana diagnostics and the default spell palette.
-An error invalidates that wand's Lua state; the mod disposes and recreates it.
-The demo validates the entire entity tree before emitting any projectile.
-
-## Implementation
-
-| File | Responsibility |
+| Command | Action |
 | --- | --- |
-| `Compatibility/bridge.lua` | Adapts native callbacks into completed cast trees |
-| `Core/Lua51Runtime.cs` | Loads original local scripts and owns each Lua state |
-| `Core/CastPlan.cs` | Deserializes and validates the cast plan |
-| `Core/TriggerRunner.cs` | Fires each prebuilt payload once |
-| `Common/DemoProjectileAdapter.cs` | Converts three supported entity paths to Terraria projectiles |
-| `Core/WandDefinition.cs` | Validated, serializable wand settings and independent drafts |
-| `Core/CastDiagnostics.cs` | Draw/mana/tree display and full JSON exports |
-| `Common/WandEditorState.cs` | Spell palette, ordered slots, stat editing and log viewer |
-| `Content/Items/NoitaWand.cs` | Saved wand definition, hand-anchored aiming and approximate cooldown |
+| `/noita kit` | Give both wands and both flasks |
+| `/noita spell FIREBALL` | Select a spell while holding the debug wand |
+| `/noita liquids acid` | List matching imported liquids, up to 40 at once |
+| `/noita material oil` | Select any imported liquid in the debug flask |
+| `/noita fill acid` | Give the held normal flask test contents |
+| `/noita status` | Show build, material counts and active custom cells |
+| `/noita clearliquids` | Clear custom cells; native Terraria liquids remain |
 
-File/process libraries are removed from the embedded Lua environment. Casts have
-instruction, projectile-count and trigger-depth limits. These are operational
-bounds for the prototype, not a security sandbox for arbitrary Lua code.
-Keep original game data outside the repository or under ignored `LocalData/`.
+The debug flask creates liquid on left-click and cycles a common material list
+on right-click. The normal flask scoops existing custom or native liquid.
+**Clear shots** cancels the current debug case's projectiles and spawned test
+creatures. It cannot reverse damage, resource costs, converted enemies, terrain
+changes or liquids already deposited. Auto scans clean up the previous case;
+short intervals can cut off long effects. See [DEBUG_WAND.md](DEBUG_WAND.md).
 
-## XML/sprite data audit
+## Coverage and known limits
 
-After producing the spell-audit JSON, run:
+The v0.8 audit runs **1,266 reference casts: 422 cards × three contexts**.
+**1,263 casts pass**, and **421 cards pass all three Lua contexts**. The remaining
+`ALL_SPELLS` card requires Noita's multi-stage world ritual and reports an explicit
+unsupported entity-loader error. It is not silently treated as a working spell.
 
-```sh
-dotnet run --project Tools/XmlAudit -- /absolute/path/to/extracted-noita spell-audit.json xml-asset-audit.json
+**200 of 201 emitted entity paths** have live adapters in those casts.
+`SUMMON_PORTAL` remains preview-only because its destination relies on Noita's
+biome/world portal rules. See [EXPANSION_COVERAGE.md](EXPANSION_COVERAGE.md) for
+entity and modifier classifications. The downloadable coverage JSON includes
+per-card results, XML component gaps and material metadata.
+
+These are static cast/import coverage counts, not proof that 421 cards or 200
+entities reproduce every native effect. A follow-up spark can fire even when a
+modifier's extra entity is deferred. Entity scripts, modded callbacks, native
+physics joints, detailed chemistry, native audio and Noita creature AI remain
+partial. Some ordinary projectiles have working motion/damage but missing
+secondary scripted behavior. Reports retain these gaps explicitly.
+
+The adapters use 25 Terraria HP per Noita damage unit. They preserve Terraria's
+protected/important tiles. Custom materials use 16-pixel cells with 255 units per
+cell, at most 32,768 cells, and bounded update work. They do not implement Noita's
+pixel chemistry or seamless mixing with native liquids. Statuses use Terraria
+buffs where possible. NPC polymorph becomes a temporary bunny; player polymorph
+is temporary curse/weakness rather than a sheep body. Egg creatures use Terraria
+slimes. Worm body segments are visual, with head contact damage. Shields and
+special fields are approximations. Infinite lifetime is capped at 3,600 frames.
+All-projectile conversion affects up to 128 existing shots per cast.
+
+The host PRNG is deterministic but **not Noita's bit-identical RNG**. Unlocks and
+card uses remain permissive for development; loot/progression/balance and
+multiplayer are not implemented. Mana/reload timing and hit immunity follow the
+Terraria adapter, not a recovered native scheduling engine.
+
+## Build and checks
+
+Clone branch `feature/noita-lua-adapter` into a ModSources folder named exactly
+`terrarianoita`, then build from **Workshop → Develop Mods**. The folder name is
+the mod's internal name. The current build compiles with tModLoader
+2026.08.3.0 / .NET 8.
+
+From the repository root with .NET 8 installed:
+
+```powershell
+dotnet run --project Tools/AdapterSmoke -- Native/terrarianoita_lua51.dll C:/Noita-extracted Compatibility/bridge.lua results.json
+dotnet run --project Tools/SpellAudit -- Native/terrarianoita_lua51.dll C:/Noita-extracted Compatibility/bridge.lua spell-audit.json
+dotnet run --project Tools/ExpansionAudit -- C:/Noita-extracted spell-audit.json expansion-coverage.json
+dotnet run --project Tools/ModSmoke -- C:/path/to/terrarianoita.tmod C:/path/to/tModLoader
 ```
 
-This audits inherited definitions, PNG headers/frame bounds and deferred
-components for emitted entity paths. It does not require a graphics device and
-does not prove successful GPU rendering.
+On Linux substitute `Native/libterrarianoita_lua51.so`. The standalone checks
+exercise original Lua ordering/payloads, modifiers, resource snapshots, material
+inheritance and conservation. Packaged reflection checks exercise actual
+`tModLoader` item serialization, clone isolation, effect geometry, harmless
+preview and cleanup. There is no graphical Terraria client in the build
+environment: this release still needs in-game visual/combat/terrain validation.
 
-Reproduce the match inventory with:
-
-```sh
-dotnet run --project Tools/SpellMatches -- /absolute/path/to/extracted-noita spell-audit.json spell-matches.json
-```
+Release validation: **1,041 standalone checks** and **25 packaged-mod checks**
+passed, in addition to the 1,266-case coverage audit above. The packaged version
+is checked against its compiled build identity to catch stale installations.

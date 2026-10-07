@@ -25,7 +25,7 @@ public sealed class ImportedSpriteCache : IDisposable
         Texture2D? texture = null;
         try
         {
-            if (textures.Count >= 256 || pixels + (long)sprite.TextureWidth * sprite.TextureHeight > 16_777_216)
+            if (textures.Count >= 1024 || pixels + (long)sprite.TextureWidth * sprite.TextureHeight > 16_777_216)
                 throw new InvalidOperationException("Sprite cache limit reached; marker used");
             using var file = File.OpenRead(Catalog.LocalPath(sprite.ImagePath));
             texture = Texture2D.FromStream(Main.graphics.GraphicsDevice, file);

@@ -92,9 +92,83 @@ end
 function LogAction(name) record('log', name) end
 function Reflection_RegisterProjectile(path) record('reflection', path) end
 function print_error(message) error(message) end
-function GameGetFrameNum() return 0 end
-function SetRandomSeed() error('Noita RNG is not implemented; shuffle is disabled') end
-function Random() error('This spell requires the unimplemented Noita RNG') end
+-- Deterministic host PRNG, intentionally not bit-identical to Noita's native RNG.
+local host = { frame = 0, x = 0, y = 0, hp = 4, max_hp = 4, money = 0, black_holes = 0, enemies = {}, projectiles = {}, wands = {} }
+local globals, rng = {}, 1
+function GameGetFrameNum() return host.frame end
+function SetRandomSeed(x, y)
+    rng = (math.floor(math.abs(x or 0)) * 16807 + math.floor(math.abs(y or 0)) * 48271) % 2147483646 + 1
+end
+function Random(a, b)
+    rng = (rng * 16807) % 2147483647
+    if a == nil then return rng / 2147483647 end
+    if b == nil then b, a = a, 0 end
+    return math.floor(a + (b - a + 1) * rng / 2147483647)
+end
+function Randomf(a, b) return (a or 0) + ((b or 1) - (a or 0)) * Random() end
+function HasFlagPersistent() return true end -- This development catalog unlocks every imported card.
+function GlobalsGetValue(key, fallback) return globals[key] or fallback end
+function GlobalsSetValue(key, value) globals[key] = tostring(value) end
+function GetUpdatedEntityID() return 1 end
+function EntityGetTransform() return host.x, host.y end
+function EntityGetWithTag(tag)
+    if tag == 'player_unit' then return { 1 } end
+    if tag == 'black_hole_giga' then local list = {}; for i = 1, host.black_holes do list[i] = 50000 + i end; return list end
+    error('Host entity tag not supported: ' .. tag)
+end
+function EntityGetInRadiusWithTag(x, y, radius, tag)
+    local source = tag == 'homing_target' and host.enemies or tag == 'projectile' and host.projectiles
+    if not source then error('Host radius query not supported: ' .. tag) end
+    local list = {}
+    for i, point in ipairs(source) do if (point.x-x)^2 + (point.y-y)^2 <= radius^2 then list[#list+1] = 60000 + i end end
+    return list
+end
+function EntityGetAllChildren(id)
+    id = tonumber(id)
+    if id == 1 then return { 2 } end
+    if id == 2 then local list = { 3 }; for i in ipairs(host.wands) do list[#list+1] = 100+i end; return list end
+    if id and id > 100 and id < 1000 then
+        local list = {}; for j in ipairs(host.wands[id-100] or {}) do list[j] = id * 1000 + j end; return list
+    end
+    return {}
+end
+function EntityGetName(id) return tonumber(id) == 2 and 'inventory_quick' or '' end
+function EntityHasTag(id, tag) id = tonumber(id); return tag == 'wand' and (id == 3 or id and id > 100 and id < 1000) end
+function EntityGetFirstComponent(id, kind)
+    id = tonumber(id)
+    if id == 1 and (kind == 'DamageModelComponent' or kind == 'WalletComponent' or kind == 'Inventory2Component' or kind == 'InventoryGuiComponent' or kind == 'PlatformShooterPlayerComponent') then return { id = id, kind = kind } end
+    if EntityHasTag(id, 'wand') and (kind == 'AbilityComponent' or kind == 'ItemComponent') then return { id = id, kind = kind } end
+    if id and id >= 101001 and kind == 'ItemActionComponent' then return { id = id, kind = kind } end
+    return nil
+end
+EntityGetFirstComponentIncludingDisabled = EntityGetFirstComponent
+function EntityGetComponent(id, kind) local component = EntityGetFirstComponent(id, kind); return component and { component } or nil end
+EntityGetComponentIncludingDisabled = EntityGetComponent
+function ComponentGetValue2(comp, field)
+    if comp.kind == 'DamageModelComponent' and (field == 'hp' or field == 'max_hp') then return host[field] end
+    if comp.kind == 'WalletComponent' then if field == 'money' then return host.money end; if field == 'money_spent' then return 0 end end
+    if comp.kind == 'Inventory2Component' and field == 'mActiveItem' then return 3 end
+    if comp.kind == 'ItemActionComponent' and field == 'action_id' then return (host.wands[math.floor(comp.id/1000)-100] or {})[comp.id%1000] end
+    error('Host component read not supported: ' .. comp.kind .. '.' .. field)
+end
+function ComponentGetValue(comp, field) return tostring(ComponentGetValue2(comp, field)) end
+function ComponentSetValue2(comp, field, value)
+    if comp.kind == 'DamageModelComponent' and field == 'hp' then host.hp = value; record('host_hp', value); return end
+    if comp.kind == 'WalletComponent' and field == 'money' then local spent = host.money-value; host.money = value; record('host_money_spent', spent); return end
+    if comp.kind == 'WalletComponent' and field == 'money_spent' then return end
+    if comp.kind == 'PlatformShooterPlayerComponent' and field == 'mCessationLifetime' then record('host_cessation', value); return end
+    if comp.kind == 'PlatformShooterPlayerComponent' and field == 'mCessationDo' then return end
+    if comp.kind == 'AbilityComponent' and (field == 'mNextFrameUsable' or field == 'mCastDelayStartFrame') then record('host_ability_timing', { field = field, value = value }); return end
+    if comp.kind == 'InventoryGuiComponent' and field == 'mDisplayFireRateWaitBar' then return end
+    error('Host component write not supported: ' .. comp.kind .. '.' .. field)
+end
+ComponentSetValue = ComponentSetValue2
+function EntityInflictDamage(id, damage)
+    if id ~= 1 then error('Only caster resource damage is supported') end
+    host.hp = math.max(0.04, host.hp - damage); record('host_hp', host.hp)
+end
+function EntityLoad(path) error('Entity script loader not ported: ' .. path) end
+function bridge_context(value) host = value end
 function BaabInstruction() error('BAAB native instructions are not implemented') end
 
 -- Restrict file/process APIs. Native callbacks never longjmp through managed code.
@@ -117,11 +191,10 @@ end
 
 function bridge_configure(request)
     return guarded(function()
-        if request.shuffle then error('Shuffle requires native-compatible RNG') end
         for _, slot in ipairs(request.slots) do
             if not all_actions[slot.id] then error('Unknown Noita spell: ' .. slot.id) end
         end
-        ConfigGun_ReadToLua(request.actions_per_round, false, request.reload_time, #request.slots)
+        ConfigGun_ReadToLua(request.actions_per_round, request.shuffle, request.reload_time, #request.slots)
         _set_gun()
         local state = {}
         ConfigGunActionInfo_Init(state)

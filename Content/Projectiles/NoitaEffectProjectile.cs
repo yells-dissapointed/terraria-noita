@@ -17,6 +17,7 @@ public sealed class NoitaEffectProjectile : ModProjectile
 {
     public override string Texture => "Terraria/Images/Projectile_" + ProjectileID.MagicMissile;
     public CastDiagnostics? Diagnostics { get; private set; }
+    public string EntityPath { get; private set; } = "";
     private SpellEffectProfile settings = new();
     private SpellLiveCase? live;
     private VisualEntityEvidence? evidence;
@@ -37,7 +38,7 @@ public sealed class NoitaEffectProjectile : ModProjectile
     public void Configure(ProjectilePlan node, SpellEffectProfile profile, Vector2 aim, CastDiagnostics? trace, SpellLiveCase? report,
         VisualEntityEvidence? record, bool showDebug)
     {
-        settings = profile; direction = aim; origin = Projectile.Center; Diagnostics = trace; live = report; evidence = record;
+        EntityPath = node.Entity; settings = profile; direction = aim; origin = Projectile.Center; Diagnostics = trace; live = report; evidence = record;
         triggers = new(node.Triggers); debugVisible = showDebug; bounces = settings.Visual.Bounces;
         launchSpeed = Projectile.velocity.Length(); initialLife = Projectile.timeLeft;
         Projectile.friendly = settings.Kind is NoitaEffectKind.Saw or NoitaEffectKind.Tentacle || settings.LargeHole;
@@ -103,14 +104,14 @@ public sealed class NoitaEffectProjectile : ModProjectile
         Projectile.velocity *= (float)settings.Visual.DragPerFrame;
         if (age % 3 == 0)
         {
-            int removed = SpellTerrain.Eat(Projectile, radius); tilesEaten += removed;
+            int removed = settings.Repels ? 0 : SpellTerrain.Eat(Projectile, radius); tilesEaten += removed;
             if (removed > 0) Diagnostics?.Event($"Black hole removed {removed} terrain tiles; radius {radius:0}");
         }
         float reach = (float)settings.AttractionRadius;
         Vector2 Pull(Vector2 center)
         {
             var delta = Projectile.Center - center; float distance = delta.Length();
-            return distance > 1 && distance < reach ? delta / distance * (196f / 60) * (1 - distance / reach) : Vector2.Zero;
+            return distance > 1 && distance < reach ? delta / distance * (settings.Repels ? -1 : 1) * (196f / 60) * (1 - distance / reach) : Vector2.Zero;
         }
         foreach (var other in Main.projectile)
             if (other.active && other.whoAmI != Projectile.whoAmI && other.ModProjectile is not NoitaEffectProjectile { settings.Kind: NoitaEffectKind.BlackHole })

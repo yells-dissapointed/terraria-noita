@@ -112,10 +112,9 @@ using (var second = New())
 }
 using (var runtime = New())
 {
+    runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET"), new SpellSlot("BOMB") }, Shuffle: true));
+    Check(runtime.Cast(100).Root.Projectiles.Count == 1, "shuffle runs through deterministic host RNG");
     bool rejected = false;
-    try { runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET") }, Shuffle: true)); }
-    catch (NotSupportedException) { rejected = true; }
-    Check(rejected, "shuffle fails explicitly");
     runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET") }));
     rejected = false;
     try { runtime.Cast(double.NaN); } catch (ArgumentOutOfRangeException) { rejected = true; }
@@ -253,7 +252,7 @@ using (var catalog = New())
     var sparkCase = audit.Report.Cases.First(c => c.Spell == "LIGHT_BULLET");
     Check(sparkCase.Status == SpellAuditStatus.DemoWithGaps && sparkCase.Inspection!.Missing.Any(s => s.Contains("damage_critical_chance")), "audit flags ignored spark critical chance despite a renderable entity");
     Check(audit.Report.Cases.First(c => c.Spell == "BOMB").Status == SpellAuditStatus.Unsupported, "audit detects unported bomb entity");
-    Check(audit.Report.Cases.Where(c => c.Spell == "DAMAGE_RANDOM").All(c => c.Status == SpellAuditStatus.ScriptError), "audit captures native API errors without stopping the batch");
+    Check(audit.Report.Cases.Where(c => c.Spell == "DAMAGE_RANDOM").All(c => c.Status != SpellAuditStatus.ScriptError), "random damage executes original Lua with host RNG");
     Check(audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.NoProjectile) &&
           audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.DemoWithGaps), "utility spells are tested with follow-up projectiles");
     Check(audit.Report.Cases.Any(c => c.Spell == "DAMAGE" && c.Inspection != null && c.Inspection.Missing.Any(m => m.Contains("extra_entities"))), "audit reports ignored native effect entities");
@@ -293,7 +292,7 @@ using (var catalogForScan = New())
     var neutral = catalogForScan.DefaultConfiguration();
     int released = 0;
     void ReleaseCase(Lua51Runtime r) { r.Dispose(); released++; }
-    var failedCase = SpellAudit.RunCase("DAMAGE_RANDOM", 1, New, neutral, ReleaseCase);
+    var failedCase = SpellAudit.RunCase("NOT_A_SPELL", 1, New, neutral, ReleaseCase);
     var nextCase = SpellAudit.RunCase("LIGHT_BULLET", 1, New, neutral, ReleaseCase);
     Check(released == 2 && failedCase.Status == SpellAuditStatus.ScriptError && nextCase.Status == SpellAuditStatus.DemoWithGaps, "debug scan releases failed states and tests the next spell independently");
     var liveTrace = new CastDiagnostics(); liveTrace.Begin("Debug spark", new WandDefinition(), 10000); liveTrace.Capture(nextCase.Plan!);
@@ -342,8 +341,8 @@ Check(holeEffect.RadiusAt(0) == 12 && holeEffect.RadiusAt(500) == 12 && holeEffe
 Check(SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_short.xml").Visual.Lifetime == 8 &&
       SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_static.xml").Visual.SpeedPerFrame == 0,
     "short teleport remains eight frames and return teleport remains static");
-Check(!SpellEffectProfile.Supports("data/entities/projectiles/deck/black_hole_giga.xml") && !SpellEffectProfile.Supports("data/fake/disc_bullet.xml"),
-    "unimplemented giga hole and similarly named foreign entities do not silently gain gameplay");
+Check(SpellEffectProfile.Supports("data/entities/projectiles/deck/black_hole_giga.xml") && !SpellEffectProfile.Supports("data/fake/disc_bullet.xml"),
+    "giga hole is explicit while similarly named foreign entities remain unsupported");
 var openLanding = SpellLanding.Find(new(10, 20), _ => true);
 var blockedLanding = SpellLanding.Find(new(10, 20), _ => false);
 var nearbyLanding = SpellLanding.Find(new(10, 20), p => p.Y <= 12);
@@ -354,7 +353,7 @@ Check(DebugModifiers.Cards(0, 0, 0, false).Length == 0 && SpellVisuals.TerrariaS
 using (var catalogRuntime = New())
 {
     var ids = catalogRuntime.SpellIds(); var neutral = catalogRuntime.DefaultConfiguration();
-    Check(DebugModifiers.Movement.Concat(DebugModifiers.Tracking).Concat(DebugModifiers.Speed).Append("BOUNCE").Where(id => id.Length > 0).All(ids.Contains),
+    Check(DebugModifiers.Movement.Concat(DebugModifiers.Tracking).Concat(DebugModifiers.Speed).Concat(DebugModifiers.Effects).Append("BOUNCE").Where(id => id.Length > 0).All(ids.Contains),
         "all debug modifier choices are actual original Noita cards");
     for (int movement = 0; movement < 4; movement++)
         for (int tracking = 0; tracking < 4; tracking++)
@@ -425,6 +424,70 @@ try
     Check(cycleRejected, "XML inheritance cycle fails explicitly");
 }
 finally { if (Directory.Exists(xmlFixture)) Directory.Delete(xmlFixture, true); }
+
+using(var addedCatalog=New()) {
+    var neutral=addedCatalog.DefaultConfiguration();
+    foreach(string effect in DebugModifiers.Effects.Concat(DebugModifiers.Tracking.Skip(4)).Where(s=>s.Length>0)) {
+        var test=SpellAudit.RunCase("BULLET",0,New,neutral,modifiers:new[]{effect});
+        Check(test.Plan!=null && test.Status!=SpellAuditStatus.ScriptError && test.Plan.Root.Projectiles.Count>0,"expanded debug modifier casts: "+effect);
+    }
+}
+// Expansion checks cover conservation, XML behavior and real host resource effects.
+var materialCatalog = new NoitaMaterialCatalog(data);
+Check(materialCatalog.Materials.Count > 200 && materialCatalog.Liquids.Length > 50, "original material catalog imports inherited liquid families");
+Check(materialCatalog.Get("poison").Kind == "liquid" && materialCatalog.Get("poison").Has("liquid") && materialCatalog.Get("magic_liquid_berserk").Status.Contains("BERSERK"), "material inheritance retains liquid identity and magical status");
+var flaskContents = new FlaskContents();
+Check(flaskContents.Add("water", 700) == 700 && flaskContents.Add("oil", 500) == 300 && flaskContents.Total == 1000, "mixed flask accepts only available capacity");
+var flaskCopy = flaskContents.Copy(); flaskCopy.Remove("water", 500);
+Check(flaskContents.Total == 1000 && flaskCopy.Total == 500 && flaskContents.Remove("oil", 900) == 300, "flask clone does not alias or overdraw its source");
+var grid = new MaterialGrid();
+bool Walls(int x, int y) => x < 0 || x >= 24 || y < 0 || y >= 16;
+Check(grid.Add(12, 1, "oil", 500, Walls) == 255 && grid.Add(12,1,"poison",40,Walls) == 0, "cells cap volume without replacing a different material");
+for (int x = 6; x < 18; x++) grid.Add(x, 0, "oil", 220, Walls);
+long beforeFlow = grid.Volume;
+for (int frame = 0; frame < 600; frame++) {
+    grid.Step(Walls, materialCatalog.Get, 48, frame);
+    Check(grid.Volume == beforeFlow && grid.Cells.All(c => c.Amount > 0 && c.Amount <= 255 && !Walls(c.X,c.Y)), "bounded flow conserves volume and stays inside the container");
+}
+Check(grid.Cells.Any(c=>c.Y==15), "liquid settles on the bottom of a basin");
+var persistedGrid = new MaterialGrid(); foreach(var cell in grid.Cells) persistedGrid.Add(cell.X,cell.Y,cell.Material,cell.Amount,Walls);
+Check(persistedGrid.Volume == grid.Volume && persistedGrid.Cells.OrderBy(c=>c.X).ThenBy(c=>c.Y).SequenceEqual(grid.Cells.OrderBy(c=>c.X).ThenBy(c=>c.Y)), "cell records recreate exact material identities and quantities");
+int poured = grid.Add(0,0,"acid",80,Walls); int taken = grid.Take(0,0,500);
+Check(poured==taken && grid.Volume==beforeFlow, "scoop and pour conserve accepted volume");
+var fullGrid=new MaterialGrid(); for(int i=0;i<MaterialGrid.MaximumCells;i++) fullGrid.Add(i,0,"oil",1,(_,_)=>false);
+Check(fullGrid.Add(MaterialGrid.MaximumCells,0,"oil",10,(_,_)=>false)==0 && fullGrid.Volume==MaterialGrid.MaximumCells, "cell budget refuses excess emission without modifying existing contents");
+var expansionAssets = new NoitaAssetCatalog(data);
+ComponentSpellProfile Profile(string name) => ComponentSpellProfile.Load(expansionAssets,"data/entities/projectiles/deck/"+name+".xml");
+Check(Profile("fireball").BlastDamage == 2 && Profile("fireball").BlastHurtsCaster && Profile("fireball").BlastMaterial=="fire", "fireball imports explosive damage, caster risk and fire creation");
+Check(Profile("heal_bullet").Healing > 0 && Profile("heal_bullet").Damage==0, "healing bullet is healing rather than generic damage");
+Check(Profile("cloud_water").Emissions.Any(e=>e.Material=="water" && e.Shape=="rain") && Profile("cloud_water").Visual.Lifetime==600, "nested cloud emitter and independent lifetime import");
+Check(Profile("sea_water").Emissions.Any(e=>e.Material=="water" && e.Shape=="sea") && Profile("sea_water").Visual.Lifetime==300, "sea emitter imports without requiring a ProjectileComponent");
+Check(Profile("orb_laseremitter_four").Beams.Count >= 1 && Profile("orb_laseremitter_cutter").Beams[0].Length==64, "plasma emitters import bounded ray geometry");
+Check(Profile("death_cross").HomingRange==350 && Profile("death_cross").BlastDamage==3 && Profile("death_cross").BlastRadius==25, "death cross retains seeking and delayed blast data");
+Check(Profile("regeneration_field").AreaRadius==28 && Profile("regeneration_field").Statuses.Any(p=>p.Contains("regeneration")), "field radius and status links survive base inheritance");
+var whiteHole=SpellEffectProfile.Load(expansionAssets,"data/entities/projectiles/deck/white_hole.xml");
+Check(whiteHole.Repels && !whiteHole.LargeHole, "white hole selects repulsion rather than attraction");
+Check(SpellEffectProfile.Load(expansionAssets,"data/entities/projectiles/deck/black_hole_giga.xml").Giga, "giga hole uses explicit large-hole adapter");
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("BLOOD_MAGIC"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Hp=4,MaxHp=4});
+    Check(cast.Events.Any(e=>e.Kind=="host_hp" && Math.Abs(e.Value.GetDouble()-3.84)<.00001), "blood magic records its real four-HP resource cost");
+}
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("MONEY_MAGIC"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Money=1000});
+    Check(cast.Events.Any(e=>e.Kind=="host_money_spent" && e.Value.GetDouble()==50) && cast.Root.Number("damage_projectile_add")==2, "money magic emits an actual wallet debit coupled to its damage bonus");
+}
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("ZETA"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Wands=new(){new(){"BOMB"}}});
+    Check(cast.Root.Projectiles.Any(n=>n.Entity.EndsWith("/bomb.xml")), "Zeta reads the supplied second-wand inventory instead of a dummy entity");
+}
+using(var rngA=New()) using(var rngB=New()) {
+    var deck=new WandConfiguration(new[]{new SpellSlot("BOMB"),new SpellSlot("LIGHT_BULLET"),new SpellSlot("ARROW")},Shuffle:true);
+    rngA.Configure(deck);rngB.Configure(deck);
+    Check(rngA.Cast(100,null,new CastHostContext{Frame=123}).Root.Projectiles.Select(n=>n.Entity).SequenceEqual(rngB.Cast(100,null,new CastHostContext{Frame=123}).Root.Projectiles.Select(n=>n.Entity)), "equal snapshots produce reproducible shuffled casts");
+}
 Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
 if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 return 0;

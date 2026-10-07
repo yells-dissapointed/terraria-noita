@@ -37,6 +37,7 @@ public static class SpellEffectAdapter
         evidence.Gaps.Add(settings.Limits); live?.VisualEntities.Add(evidence);
         ((NoitaEffectProjectile)projectile.ModProjectile).Configure(node, settings, direction, trace, live, evidence, debugVisible);
         projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, trace, evidence);
+        projectile.GetGlobalProjectile<SpellAugmentBinding>().Configure(projectile, shot, trace, evidence);
         trace?.Event($"Noita {settings.Kind} #{id}: damage {damage}, life {projectile.timeLeft}; {settings.Limits}");
         return 1;
     }

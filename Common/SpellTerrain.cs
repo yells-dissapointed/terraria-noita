@@ -10,6 +10,14 @@ public static class SpellTerrain
 {
     private static ulong lastFrame;
     private static int remaining;
+    private static readonly Projectile AcidProbe = new() { type = Terraria.ID.ProjectileID.Bomb };
+    public static bool Corrode(int x, int y)
+    {
+        if (Main.netMode != Terraria.ID.NetmodeID.SinglePlayer || !WorldGen.InWorld(x,y,2)) return false;
+        var tile = Main.tile[x,y]; bool damaged = false;
+        if (!tile.HasTile || !Main.tileSolid[tile.TileType] || Main.tileFrameImportant[tile.TileType] || !AcidProbe.CanExplodeTile(x,y) || !TileLoader.CanKillTile(x,y,tile.TileType,ref damaged)) return false;
+        WorldGen.KillTile(x,y,noItem:true); return !tile.HasTile;
+    }
     public static int Eat(Projectile projectile, float radius)
     {
         if (Main.netMode != Terraria.ID.NetmodeID.SinglePlayer) return 0;

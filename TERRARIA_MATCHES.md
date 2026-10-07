@@ -1,3 +1,5 @@
+> Historical mapping inventory from v0.7. See [EXPANSION_COVERAGE.md](EXPANSION_COVERAGE.md) for current v0.8 component adapters.
+
 # Noita → Terraria projectile inventory
 
 Inspected 197 emitted entity paths from 422 spells / 1266 casts. Complete details are in the companion JSON.

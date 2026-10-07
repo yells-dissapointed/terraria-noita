@@ -1,5 +1,8 @@
 # Spell audit — Terraria Noita v0.3.0
 
+Historical baseline only. For current v0.8.0 cast and adapter coverage, see
+[EXPANSION_COVERAGE.md](EXPANSION_COVERAGE.md).
+
 The reference counts below were reproduced unchanged in v0.5.0. They measure
 the conservative three-entity gameplay adapter. The separate XML/sprite preview
 now loads all 197 entity paths emitted by these casts: 93 with sprite metadata

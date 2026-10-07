@@ -31,9 +31,9 @@ public static class DemoProjectileAdapter
         {
             bool chainsaw = node.Entity == DemoCapabilities.Chainsaw;
             double baseDamage = chainsaw ? 13 : node.Entity == DemoCapabilities.BlueSpark ? 4 : 3;
-            double addition = shot.Number("damage_projectile_add") + (chainsaw ? shot.Number("damage_slice_add") : 0);
+            double addition = shot.Number("damage_projectile_add") + shot.Number("damage_electricity_add") + shot.Number("damage_ice_add") + (chainsaw ? shot.Number("damage_slice_add") : 0);
             // Prototype conversion: 25 HP per internal damage unit. Native entity effects are not replicated.
-            int damage = Math.Max(1, (int)player.GetTotalDamage(DamageClass.Magic).ApplyTo((float)(baseDamage + addition * 25)));
+            int damage = Math.Max(0, (int)player.GetTotalDamage(DamageClass.Magic).ApplyTo((float)(baseDamage + addition * 25)));
             float speed = (float)Math.Clamp(shot.Number("speed_multiplier", 1), .01, 100) * (chainsaw ? .1f : 12f);
             double spread = Math.Clamp(shot.Number("spread_degrees"), -180, 180);
             float angle = MathHelper.ToRadians((float)spread) * Main.rand.NextFloat(-.5f, .5f);
@@ -46,6 +46,7 @@ public static class DemoProjectileAdapter
             ((NoitaSpark)projectile.ModProjectile).Configure(node, chainsaw, direction, trace, debugVisible);
             ((NoitaSpark)projectile.ModProjectile).BindLiveReport(liveReport);
             projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, trace);
+            projectile.GetGlobalProjectile<SpellAugmentBinding>().Configure(projectile, shot, trace);
             spawned++;
             trace?.Event($"Spawn {System.IO.Path.GetFileName(node.Entity)} #{id}, damage {damage}, life {projectile.timeLeft} frames");
         }

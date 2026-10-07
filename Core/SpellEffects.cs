@@ -17,6 +17,8 @@ public sealed class SpellEffectProfile
     public double EatRadius { get; set; }
     public double AttractionRadius { get; set; }
     public bool LargeHole { get; set; }
+    public bool Repels { get; set; }
+    public bool Giga { get; set; }
     public int SawTier { get; set; }
     public int Points { get; set; } = 16;
     public double SegmentLength { get; set; } = 4;
@@ -25,7 +27,7 @@ public sealed class SpellEffectProfile
         "data/entities/projectiles/deck/teleport_projectile.xml" or "data/entities/projectiles/deck/teleport_projectile_short.xml" or
         "data/entities/projectiles/deck/teleport_projectile_static.xml" => NoitaEffectKind.Teleport,
         "data/entities/projectiles/deck/teleport_projectile_closer.xml" => NoitaEffectKind.TeleportCloser,
-        "data/entities/projectiles/deck/black_hole.xml" or "data/entities/projectiles/deck/black_hole_big.xml" => NoitaEffectKind.BlackHole,
+        "data/entities/projectiles/deck/black_hole.xml" or "data/entities/projectiles/deck/black_hole_big.xml" or "data/entities/projectiles/deck/black_hole_giga.xml" or "data/entities/projectiles/deck/white_hole.xml" or "data/entities/projectiles/deck/white_hole_big.xml" or "data/entities/projectiles/deck/white_hole_giga.xml" => NoitaEffectKind.BlackHole,
         "data/entities/projectiles/deck/tentacle.xml" => NoitaEffectKind.Tentacle,
         "data/entities/projectiles/deck/disc_bullet.xml" or "data/entities/projectiles/deck/disc_bullet_big.xml" or
         "data/entities/projectiles/deck/disc_bullet_bigger.xml" => NoitaEffectKind.Saw,
@@ -42,10 +44,12 @@ public sealed class SpellEffectProfile
         result.Damage = (p?.Number("damage") ?? 0) + (types?.Number("slice") ?? 0) + (types?.Number("melee") ?? 0) + (types?.Number("projectile") ?? 0);
         if (kind == NoitaEffectKind.BlackHole)
         {
-            result.LargeHole = entity.EndsWith("black_hole_big.xml", StringComparison.Ordinal);
+            result.Giga = entity.EndsWith("_giga.xml", StringComparison.Ordinal);
+            result.Repels = entity.Contains("/white_hole", StringComparison.Ordinal);
+            result.LargeHole = entity.EndsWith("_big.xml", StringComparison.Ordinal) || result.Giga;
             result.EatRadius = Math.Clamp(asset.Component("CellEaterComponent")?.Number("radius", 12) ?? 12, 1, 64);
-            result.AttractionRadius = 150; // Supplied black_hole_gravity.lua distance_full.
-            if (result.LargeHole) result.Damage = .25; // Terraria contact damage prototype; native damage_probability is not HP.
+            result.AttractionRadius = result.Giga ? 260 : 150; // Supplied black_hole_gravity.lua distance_full.
+            if (result.LargeHole) result.Damage = result.Giga ? .14 : .25; // Terraria contact damage prototype; native damage_probability is not HP.
         }
         if (kind == NoitaEffectKind.Saw)
             result.SawTier = entity.EndsWith("disc_bullet_bigger.xml", StringComparison.Ordinal) ? 2 : entity.EndsWith("disc_bullet_big.xml", StringComparison.Ordinal) ? 1 : 0;
@@ -63,7 +67,7 @@ public sealed class SpellEffectProfile
         }
         return result;
     }
-    public float RadiusAt(int age) => (float)(LargeHole ? Math.Min(64, 1 + age / 3) : EatRadius);
+    public float RadiusAt(int age) => (float)(Giga ? 60 : LargeHole ? Math.Min(64, 1 + age / 3) : EatRadius);
     public string Limits => Kind switch {
         NoitaEffectKind.Teleport => "Collision/lifetime teleport with a nearby clear landing; blocked destinations cancel. Native particle/audio effects are approximated.",
         NoitaEffectKind.TeleportCloser => "Moves a hit non-boss enemy to the launch point if it fits. Native enemy scripts are not executed.",

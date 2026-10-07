@@ -15,7 +15,15 @@ public sealed class SpellDebugState : UIState
     private UIPanel panel = null!;
     private UIText cursor = null!, status = null!, detail = null!;
     private UITextPanel<string> auto = null!, context = null!, interval = null!, visualization = null!, fixedSpell = null!;
-    private UITextPanel<string> movement = null!, tracking = null!, speed = null!, bounce = null!;
+    private UITextPanel<string> movement = null!, tracking = null!, speed = null!, bounce = null!, effect = null!;
+    private UITextPanel<string>[] presets = new UITextPanel<string>[20];
+    private int presetPage;
+    private static readonly string[][] PresetIds = {
+        new[]{"LIGHT_BULLET","BOMB","LIGHT_BULLET_TRIGGER","LIGHT_BULLET_TIMER","CHAINSAW","MIST_ALCOHOL","BLACK_HOLE","DAMAGE_RANDOM","ARROW","BULLET","ROCKET","TELEPORT_PROJECTILE","TELEPORT_PROJECTILE_SHORT","TELEPORT_PROJECTILE_STATIC","TELEPORT_PROJECTILE_CLOSER","TENTACLE","DISC_BULLET","DISC_BULLET_BIG","DISC_BULLET_BIGGER","BLACK_HOLE_BIG"},
+        new[]{"FIREBALL","GRENADE","DYNAMITE","METEOR","DEATH_CROSS","DEATH_CROSS_BIG","HEAL_BULLET","LIGHTNING","LASER","LASER_EMITTER","LASER_EMITTER_FOUR","LASER_EMITTER_CUTTER","MEGALASER","LUMINOUS_DRILL","DIGGER","NUKE","BLACK_HOLE_GIGA","WHITE_HOLE","WHITE_HOLE_BIG","WHITE_HOLE_GIGA"},
+        new[]{"MATERIAL_WATER","MATERIAL_OIL","MATERIAL_BLOOD","MATERIAL_ACID","SEA_WATER","SEA_LAVA","SEA_ACID","SEA_ALCOHOL","CLOUD_WATER","CLOUD_BLOOD","CLOUD_ACID","CLOUD_THUNDER","CIRCLE_WATER","CIRCLE_ACID","REGENERATION_FIELD","FREEZE_FIELD","POLYMORPH_FIELD","TELEPORTATION_FIELD","VACUUM_LIQUID","VACUUM_POWDER"},
+        new[]{"ALL_ACID","ALL_BLACKHOLES","ALL_DEATHCROSSES","ALL_DISCS","ALL_NUKES","ALL_ROCKETS","DESTRUCTION","MASS_POLYMORPH","TENTACLE_PORTAL","WORM_RAIN","SUMMON_EGG","BLOOD_MAGIC","BLOOD_TO_POWER","MONEY_MAGIC","CESSATION","ZETA","RANDOM_PROJECTILE","HOMING_CURSOR","HOMING_SHOOTER","HOMING_ACCELERATING"}
+    };
     public SpellDebugState(SpellDebugWand wand, Action closePanel) { Wand = wand; close = closePanel; }
     private static void Place(UIElement e, float x, float y, float width, float height)
     {
@@ -50,21 +58,24 @@ public sealed class SpellDebugState : UIState
         }, 326, 154, 106);
         Button("Clear shots", Wand.CleanupCurrent, 438, 154, 104);
         fixedSpell = Button("", Wand.ToggleFixedSpell, 0, 190, 250);
+        effect = Button("", Wand.ChangeEffectModifier, 284, 190, 278);
         movement = Button("", Wand.ChangeMovement, 0, 224, 278);
         tracking = Button("", Wand.ChangeTracking, 284, 224, 278);
         speed = Button("", Wand.ChangeSpeed, 0, 258, 278);
         bounce = Button("", Wand.ToggleBounce, 284, 258, 160);
         Button("Reset mods", Wand.ResetModifiers, 450, 258, 112);
         visualization = Button("", Wand.ChangeVisualization, 0, 294, 320);
+        Button("Presets >", () => {presetPage=(presetPage+1)%PresetIds.Length;RefreshPresets();},324,294,108);
         Button("Loaded file", () => Main.NewText(BuildIdentity.LoadedPath(Wand.Mod), Color.Cyan), 438, 294, 104);
         Label("Live effects alter terrain/location and may hit you. Preview is harmless.", 326);
-        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error", "Arrow", "Magic arrow", "Rocket", "Teleport", "Short teleport", "Return teleport", "Enemy teleport", "Tentacle", "Sawblade", "Giant saw", "Omega saw", "Super hole" };
-        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM", "ARROW", "BULLET", "ROCKET", "TELEPORT_PROJECTILE", "TELEPORT_PROJECTILE_SHORT", "TELEPORT_PROJECTILE_STATIC", "TELEPORT_PROJECTILE_CLOSER", "TENTACLE", "DISC_BULLET", "DISC_BULLET_BIG", "DISC_BULLET_BIGGER", "BLACK_HOLE_BIG" };
-        for (int i = 0; i < ids.Length; i++)
+        for (int i = 0; i < presets.Length; i++)
         {
-            string spell = ids[i]; Button(names[i], () => Wand.Select(spell), i % 4 * 140, 352 + i / 4 * 34, 132);
+            int index=i; presets[i]=Button("", () => Wand.Select(PresetIds[presetPage][index]), i % 4 * 140, 352 + i / 4 * 34, 132);
         }
+        RefreshPresets();
+
     }
+    private void RefreshPresets() { for(int i=0;i<presets.Length;i++) {string name=PresetIds[presetPage][i].Replace('_',' ');presets[i].SetText(name.Length>17?name[..17]:name);} }
     public override void Update(GameTime gameTime)
     {
         if (panel.ContainsPoint(Main.MouseScreen)) Main.LocalPlayer.mouseInterface = true;
@@ -80,8 +91,9 @@ public sealed class SpellDebugState : UIState
         visualization.SetText(Wand.VisualPreview ? "Mode: XML/sprite preview (harmless)" : "Mode: Terraria integration (live)");
         fixedSpell.SetText(Wand.FixedSpell ? "Selection: Fixed spell" : "Selection: Cycle spells");
         movement.SetText("Movement: " + new[] { "Normal", "Sine wave", "Spiral", "Ping-pong" }[Wand.Movement]);
-        tracking.SetText("Tracking: " + new[] { "None", "Homing", "Short homing", "Rotate toward target" }[Wand.Tracking]);
+        tracking.SetText("Tracking: " + new[] { "None", "Homing", "Short homing", "Rotate toward target", "Cursor", "Return to caster", "Accelerating", "Avoid enemies", "Area teleport" }[Wand.Tracking]);
         speed.SetText("Speed: " + new[] { "Normal", "Faster", "Decelerate", "Accelerate" }[Wand.Speed]);
+        effect.SetText("Effect: " + (Wand.EffectModifier==0 ? "None" : Core.DebugModifiers.Effects[Wand.EffectModifier].Replace('_',' ')));
         bounce.SetText(Wand.Bounce ? "Bounce: +10" : "Bounce: None");
         base.Update(gameTime);
     }

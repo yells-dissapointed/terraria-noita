@@ -20,6 +20,8 @@ public sealed class SpellMotionBinding : GlobalProjectile
     {
         motion = SpellMotion.Load(shot, ModContent.GetInstance<AdapterSystem>().Assets.Catalog);
         Bound = true; age = 0; trace = diagnostics; bounces = motion.Bounces;
+        var augments=SpellAugments.Load(shot,ModContent.GetInstance<AdapterSystem>().Assets.Catalog);
+        motion.Gaps.RemoveAll(g=>augments.Sources.Exists(path=>g=="Deferred extra entity: "+path));
         evidence?.Gaps.AddRange(motion.Gaps);
         if (evidence != null)
         {
@@ -35,6 +37,8 @@ public sealed class SpellMotionBinding : GlobalProjectile
     {
         if (!Bound || motion == null || !projectile.active || motion.Sources.Count == 0) return;
         age++;
+        if (motion.AreaTeleport)
+            foreach(var npc in Main.npc) if(npc.active && npc.CanBeChasedBy(projectile) && Vector2.DistanceSquared(npc.Center,projectile.Center)<32*32) {projectile.Center=npc.Center;break;}
         System.Numerics.Vector2? aim = null;
         if (motion.HomingRange > 0)
         {
@@ -50,9 +54,17 @@ public sealed class SpellMotionBinding : GlobalProjectile
             if (id != targetId) { targetId = id; trace?.Event("Homing target: " + (target?.FullName ?? "none")); }
             if (target != null) { var delta = target.Center - projectile.Center; aim = new(delta.X, delta.Y); }
         }
+        if (motion.Target == "cursor" && projectile.owner == Main.myPlayer) { var delta = Main.MouseWorld - projectile.Center; aim = new(delta.X, delta.Y); }
+        if (motion.Target == "shooter" && projectile.owner >= 0 && projectile.owner < Main.maxPlayers) { var delta = Main.player[projectile.owner].Center - projectile.Center; aim = new(delta.X, delta.Y); }
+        if (motion.Target == "projectile")
+        {
+            float distance = 900 * 900; aim = null;
+            foreach (var other in Main.projectile) if (other.active && other.hostile && Vector2.DistanceSquared(other.Center, projectile.Center) < distance)
+            { var delta = other.Center - projectile.Center; distance = delta.LengthSquared(); aim = new(delta.X, delta.Y); }
+        }
         var velocity = motion.Step(new(projectile.velocity.X, projectile.velocity.Y), age, aim);
         projectile.velocity = new(velocity.X, velocity.Y);
-        if (projectile.ModProjectile is NoitaVisualProjectile or NoitaSpark && projectile.velocity.LengthSquared() > .001f)
+        if (projectile.ModProjectile is NoitaVisualProjectile or NoitaSpark or NoitaComponentProjectile && projectile.velocity.LengthSquared() > .001f)
             projectile.rotation = projectile.velocity.ToRotation();
     }
     public static bool TryBounce(Projectile projectile, Vector2 oldVelocity)

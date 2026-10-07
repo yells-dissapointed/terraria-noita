@@ -1,11 +1,13 @@
 Items: {
+    MaterialFlask: { DisplayName: Material Flask }
+    DebugMaterialFlask: { DisplayName: Debug Material Flask }
     SpellDebugWand: {
         DisplayName: Spell Debug Wand
         Tooltip:
             '''
             Left-click to test the next spell; right-click for scan controls
-            Automatic scan or fixed-spell repeat with movement and homing modifiers
-            Live teleport, black-hole, tentacle and saw adapters; harmless preview is default
+            Automatic scan or fixed-spell repeat with movement, homing and effect modifiers
+            XML gameplay, elemental effects and liquids; harmless preview is default
             Harmless XML/sprite preview with labeled markers for missing visuals
             Single-player development tool
             '''
@@ -30,3 +32,5 @@ Configs: {
         }
     }
 }
+
+NPCs: { NoitaRainWorm: { DisplayName: Noita Rain Worm } }
