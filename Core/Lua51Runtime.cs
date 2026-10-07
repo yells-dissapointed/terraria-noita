@@ -81,6 +81,9 @@ public sealed class Lua51Runtime : IDisposable
 
     public string[] SpellIds() => Evaluate("local ids = {}; for _, a in ipairs(actions) do ids[#ids+1] = a.id end; table.sort(ids); return table.concat(ids, '\\n')").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
+    public Dictionary<string, JsonElement> DefaultConfiguration() =>
+        JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Evaluate("return bridge_defaults()"))!;
+
     public void Configure(WandConfiguration configuration)
     {
         Check();

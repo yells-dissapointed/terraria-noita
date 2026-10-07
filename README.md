@@ -26,7 +26,7 @@ Windows x64 and Linux x64 LuaJIT libraries are included. macOS requires building
 an appropriate native library; it has not been validated. See [Native/README.md](Native/README.md).
 The wand starts with its own 100 mana pool, displayed in its tooltip.
 
-## Editor and debugging (v0.2.0)
+## Editor and debugging (v0.3.0)
 
 Right-click while holding a wand. Changes are made to a draft until you click
 **Apply**. Choose spells from the palette to append slots; use the up/down buttons
@@ -58,6 +58,25 @@ or at the hand if a wall blocks that offset. Chainsaw is a visible stationary
 28×28 NPC damage area just in front of the muzzle, lasting at least the demo's
 base 8 frames before lifetime modifiers. It does not dig Terraria blocks or
 replicate Noita's terrain effects.
+
+## Automatic spell audit
+
+**Audit all** runs three isolated casts for every spell without spawning anything
+or changing your live wand. **Results** shows the outcomes; click a spell to load
+its best tested sequence into a draft and preview it. **Stop audit** retains
+partial results, and **Save audit** exports full JSON. Completion saves
+automatically. Keep the editor open while the audit runs.
+
+The reference run covered **422 spells / 1266 casts** and found **190 spells with
+at least one drawable setup**, all with missing effects. The audit distinguishes
+renderable trees with gaps, unsupported entities, native API errors, no-projectile
+utility cases and unexercised cards. These outcomes describe prototype coverage;
+they do not prove full Noita functionality or visual fidelity. Preview logs now
+list ignored configuration and effect fields, rather than checking entity paths
+alone. See [SPELL_AUDIT.md](SPELL_AUDIT.md) for counts, limits and reproduction.
+
+Spark and chainsaw drawing now normalizes the pixel texture dimensions, fixing
+the oversized red stripe caused by scaling an entire texture as a single pixel.
 
 ## What this preserves
 
@@ -94,10 +113,10 @@ complete action table does **not** establish that every spell is supported.
 - **Persistence/networking:** edited definitions and mana are saved with the item.
   The active Lua draw/discard position resets after loading, cloning or applying
   edits. Multiplayer is not implemented.
-- **Verification:** 68 original-script, path, editor serialization and diagnostic
-  checks pass in the standalone harness. Three additional checks against the
-  packaged mod verify real tModLoader item save/load, cloning, and the chainsaw
-  damage hitbox. The mod builds and packages with tModLoader 2026.08.3.0 with zero
+- **Verification:** 92 original-script, path, editor serialization and diagnostic
+  checks pass in the standalone harness. Four additional checks against the
+  packaged mod verify real tModLoader item save/load, cloning, the chainsaw
+  damage hitbox and packaged sprite geometry. The mod builds and packages with tModLoader 2026.08.3.0 with zero
   compilation errors or warnings. The user confirmed the previous runtime loads and fires on Windows. The new
   editor, hitboxes and graphics still need a graphical in-game playtest.
 
@@ -136,7 +155,7 @@ The demo validates the entire entity tree before emitting any projectile.
 | `Core/Lua51Runtime.cs` | Loads original local scripts and owns each Lua state |
 | `Core/CastPlan.cs` | Deserializes and validates the cast plan |
 | `Core/TriggerRunner.cs` | Fires each prebuilt payload once |
-| `Common/DemoProjectileAdapter.cs` | Converts two supported entity paths to Terraria projectiles |
+| `Common/DemoProjectileAdapter.cs` | Converts three supported entity paths to Terraria projectiles |
 | `Core/WandDefinition.cs` | Validated, serializable wand settings and independent drafts |
 | `Core/CastDiagnostics.cs` | Draw/mana/tree display and full JSON exports |
 | `Common/WandEditorState.cs` | Spell palette, ordered slots, stat editing and log viewer |

@@ -2,11 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.GameContent.UI.Elements;
 using Terraria.UI;
+using Terraria.ModLoader;
 using terrarianoita.Content.Items;
 using terrarianoita.Core;
 
@@ -24,10 +26,13 @@ public sealed class WandEditorState : UIState
     private readonly Action close;
     private UIPanel panel = null!;
     private UIList palette = null!, slots = null!, log = null!;
-    private UIText status = null!;
+    private UIText status = null!, logHeading = null!;
+    private UITextPanel<string> auditButton = null!;
     private UITextPanel<string> destination = null!, catalogMode = null!, debug = null!;
     private string[] catalog = DemoSpells;
     private bool alwaysCast, allSpells;
+    private SpellAudit? audit;
+    private bool auditing, auditView;
     private int historyIndex, shownVersion = -1;
     private CastDiagnostics? shownTrace;
     private readonly List<Action> refreshStats = new();
@@ -57,6 +62,11 @@ public sealed class WandEditorState : UIState
         Stat(2, "Draw", () => draft.ActionsPerRound, v => draft.ActionsPerRound = (int)v, 1, 1, 16, "");
         Stat(3, "Mana max", () => draft.ManaMax, v => draft.ManaMax = v, 25, 1, 10000, "");
         Stat(4, "Mana regen", () => draft.ManaRecharge, v => draft.ManaRecharge = v, 10, 0, 10000, "/s");
+        var auditTools = new UIElement(); auditTools.Left.Set(0, 2 / 3f); auditTools.Top.Set(96, 0);
+        auditTools.Width.Set(-12, 1 / 3f); auditTools.Height.Set(28, 0); panel.Append(auditTools);
+        auditButton = Button(auditTools, "Audit all", StartAudit, 0, 0, 82);
+        Button(auditTools, "Results", () => { auditView = !auditView; RefreshLog(); }, 88, 0, 72);
+        Button(auditTools, "Save audit", SaveAudit, 166, 0, 88);
         debug = Button(panel, "Debug: ON", () => { Wand.DebugVisible = !Wand.DebugVisible; RefreshDebug(); }, 0, 136, 100);
         RefreshDebug();
         Button(panel, "Apply", () => {
@@ -78,7 +88,7 @@ public sealed class WandEditorState : UIState
         Place(status, 0, 171, 0, 24); status.Width.Set(0, 1); panel.Append(status);
         Label(panel, "Spell palette", 0, 198);
         Label(panel, "Ordered slots / always cast", 0, 198).Left.Set(0, .26f);
-        Label(panel, "Cast log: last 8", 0, 198).Left.Set(0, .64f);
+        logHeading = Label(panel, "Cast log: last 8", 0, 198); logHeading.Left.Set(0, .64f);
         destination = Button(panel, "Add to: Deck", () => { alwaysCast = !alwaysCast; destination.SetText(alwaysCast ? "Add to: Always" : "Add to: Deck"); }, 0, 224, 112);
         catalogMode = Button(panel, "Demo set", () => { allSpells = !allSpells; catalogMode.SetText(allSpells ? "All / experimental" : "Demo set"); RefreshPalette(); }, 118, 224, 118);
         palette = MakeList(0, .24f); slots = MakeList(.26f, .36f); log = MakeList(.64f, .36f);
@@ -106,6 +116,32 @@ public sealed class WandEditorState : UIState
     private void RefreshDebug() => debug.SetText(Wand.DebugVisible ? "Debug: ON" : "Debug: OFF");
     private void RefreshStats() { foreach (var update in refreshStats) update(); }
     private void Message(string message) => status.SetText(message.Length <= 130 ? message : message[..127] + "...");
+    private void StartAudit()
+    {
+        if (auditing) { auditing = false; auditButton.SetText("Audit all"); RefreshLog(); Message("Audit stopped. Audit all restarts; Save audit exports partial results."); return; }
+        try
+        {
+            var manager = ModContent.GetInstance<AdapterSystem>();
+            var runtime = manager.CreateRuntime();
+            try { audit = new SpellAudit(runtime.SpellIds(), manager.CreateRuntime, runtime.DefaultConfiguration(), manager.Release); }
+            finally { manager.Release(runtime); }
+            auditing = true; auditButton.SetText("Stop audit"); auditView = true; RefreshLog();
+            Message("Auditing: one isolated cast per frame. Keep editor open. Nothing is spawned.");
+        }
+        catch (Exception e) { Message("Audit could not start: " + e.Message); }
+    }
+    private void SaveAudit()
+    {
+        if (audit == null) { Message("Run Audit all first."); return; }
+        try
+        {
+            string directory = Path.Combine(Main.SavePath, "terrarianoita", "debug"); Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "spell-audit-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + ".json");
+            File.WriteAllText(path, audit.Report.Json()); Main.NewText(path, Color.LightPink);
+            Message("Audit saved (" + audit.Report.Cases.Count + "/" + audit.Report.ExpectedCases + " cases). Path printed in chat.");
+        }
+        catch (Exception e) { Message("Audit save failed: " + e.Message); }
+    }
     private void RefreshPalette()
     {
         palette.Clear();
@@ -145,7 +181,30 @@ public sealed class WandEditorState : UIState
     private void RefreshLog()
     {
         var trace = SelectedTrace(); log.Clear(); shownTrace = trace; shownVersion = trace?.Version ?? -1;
+        logHeading.SetText(auditView ? "Spell audit results" : "Cast log: last 8");
         int width = Math.Clamp((int)(log.GetInnerDimensions().Width / 7), 20, 100);
+        if (auditView)
+        {
+            log.Add(new LogLine("Audit results. Click a spell to load its best tested context into the draft and preview it. Apply remains separate.", width));
+            log.Add(new LogLine("DemoWithGaps: drawable entities with missing effects. DemoCandidate: no additional gap detected. Neither proves fidelity. NoProjectile may be a utility card.", width));
+            if (audit == null) { log.Add(new LogLine("Click Audit all to test the entire catalog without firing anything.", width)); return; }
+            log.Add(new LogLine($"{audit.Report.Cases.Count}/{audit.Report.ExpectedCases} cases; {audit.Report.CandidateSpells} spells have a demo candidate. " +
+                string.Join(", ", audit.Report.Counts.Select(p => p.Key + ": " + p.Value)), width));
+            foreach (var group in audit.Report.Cases.GroupBy(c => c.Spell))
+            {
+                var cases = group.ToArray();
+                var row = new LogLine(group.Key + ": " + string.Join(" / ", cases.Select(c => c.Context + "=" + c.Status)), width);
+                row.IgnoresMouseInteraction = false;
+                row.OnLeftClick += (_, _) => {
+                    var sample = cases.FirstOrDefault(c => c.Status == SpellAuditStatus.DemoCandidate) ?? cases.FirstOrDefault(c => c.Status == SpellAuditStatus.DemoWithGaps) ?? cases.FirstOrDefault(c => c.Context == "Followed by sparks") ?? cases[0];
+                    draft = new WandDefinition { Deck = sample.Deck.ToList(), AlwaysCast = sample.AlwaysCast.ToList(), ManaMax = 10000 };
+                    RefreshSlots(); RefreshStats(); Wand.Preview(draft); historyIndex = 0; auditView = false; RefreshLog();
+                    Message("Loaded audit context: " + sample.Spell + " / " + sample.Context + ". Review the cast log; Apply to try it live.");
+                };
+                log.Add(row);
+            }
+            return;
+        }
         foreach (string line in trace?.Lines ?? new List<string> { "No casts yet. Test draft to inspect draws, mana and trigger trees.", "Preview uses a fresh deck. Live casting retains deck state.", "Save log exports the full plan and collision events as JSON." })
             log.Add(new LogLine(line, width));
     }
@@ -153,6 +212,16 @@ public sealed class WandEditorState : UIState
     {
         if (panel.ContainsPoint(Main.MouseScreen)) Main.LocalPlayer.mouseInterface = true;
         base.Update(gameTime);
+        if (auditing && audit != null)
+        {
+            try
+            {
+                audit.Step();
+                Message($"Audit: {audit.Report.Cases.Count}/{audit.Report.ExpectedCases} cases; {audit.Report.CandidateSpells} spells have a drawable setup. Nothing spawned.");
+                if (audit.Done) { auditing = false; auditButton.SetText("Audit all"); RefreshLog(); SaveAudit(); }
+            }
+            catch (Exception e) { auditing = false; auditButton.SetText("Audit all"); Message("Audit stopped: " + e.Message); RefreshLog(); }
+        }
         var trace = SelectedTrace();
         if (!ReferenceEquals(trace, shownTrace) || (trace?.Version ?? -1) != shownVersion) RefreshLog();
     }

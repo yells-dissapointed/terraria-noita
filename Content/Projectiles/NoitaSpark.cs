@@ -73,19 +73,24 @@ public sealed class NoitaSpark : ModProjectile
     {
         var pixel = TextureAssets.MagicPixel.Value;
         Vector2 center = Projectile.Center - Main.screenPosition;
+        void Draw(Color color, float rotation, float width, float height)
+        {
+            // MagicPixel is a texture, not necessarily a 1x1 bitmap. Normalize both
+            // scale and origin so dimensions stay in world pixels at any rotation.
+            var quad = PixelQuad.Fit(pixel.Width, pixel.Height, width, height);
+            Main.EntitySpriteDraw(pixel, center, pixel.Bounds, color, rotation,
+                new Vector2(quad.OriginX, quad.OriginY), new Vector2(quad.ScaleX, quad.ScaleY), SpriteEffects.None);
+        }
         if (chainsaw)
         {
             for (int i = 0; i < 4; i++)
-                Main.EntitySpriteDraw(pixel, center, null, Color.Orange, Projectile.rotation + i * MathHelper.PiOver4,
-                    new Vector2(.5f), new Vector2(28, 3), SpriteEffects.None);
-            Main.EntitySpriteDraw(pixel, center, null, Color.LightYellow, 0, new Vector2(.5f), new Vector2(8), SpriteEffects.None);
+                Draw(Color.Orange, Projectile.rotation + i * MathHelper.PiOver4, 28, 3);
+            Draw(Color.LightYellow, 0, 8, 8);
         }
         else
         {
-            Main.EntitySpriteDraw(pixel, center, null, sparkColor * .6f, Projectile.rotation,
-                new Vector2(.5f), new Vector2(12, 8), SpriteEffects.None);
-            Main.EntitySpriteDraw(pixel, center, null, Color.White, Projectile.rotation,
-                new Vector2(.5f), new Vector2(6, 3), SpriteEffects.None);
+            Draw(sparkColor * .6f, Projectile.rotation, 12, 8);
+            Draw(Color.White, Projectile.rotation, 6, 3);
         }
         if (debugVisible)
         {

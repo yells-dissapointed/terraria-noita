@@ -69,4 +69,14 @@ if ((int)ptype.GetField("width")!.GetValue(projectile)! != 28 || (int)ptype.GetF
     (int)ptype.GetField("penetrate")!.GetValue(projectile)! != -1 || (bool)sparkType.GetMethod("ShouldUpdatePosition")!.Invoke(spark, null)!)
     throw new Exception("Chainsaw hitbox configuration mismatch");
 Console.WriteLine("PASS: actual chainsaw config creates a stationary 28x28 friendly NPC hitbox");
+var quadType = mod.GetType("terrarianoita.Core.PixelQuad")!;
+foreach (var texture in new[] { (1, 1), (2, 2), (20, 20), (256, 32) })
+{
+    object quad = quadType.GetMethod("Fit")!.Invoke(null, new object[] { texture.Item1, texture.Item2, 12f, 8f })!;
+    float Value(string property) => (float)quadType.GetProperty(property)!.GetValue(quad)!;
+    if (Math.Abs(Value("ScaleX") * texture.Item1 - 12) > .0001f || Math.Abs(Value("ScaleY") * texture.Item2 - 8) > .0001f ||
+        Math.Abs(Value("OriginX") * Value("ScaleX") - 6) > .0001f || Math.Abs(Value("OriginY") * Value("ScaleY") - 4) > .0001f)
+        throw new Exception("Packaged sprite geometry depends on texture size");
+}
+Console.WriteLine("PASS: packaged draw geometry preserves a centered 12x8 spark across four texture dimensions");
 return 0;

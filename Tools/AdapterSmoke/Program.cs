@@ -233,6 +233,36 @@ using (var runtime = New())
         Check(EntitiesSupported(plan.Root), "demo palette emits supported entity paths: " + id);
     }
 }
+// Reproduce the old full-texture scaling bug with 1x1, 2x2 and large textures.
+foreach (var texture in new[] { (1, 1), (2, 2), (20, 20), (256, 32) })
+foreach (var size in new[] { (12f, 8f), (6f, 3f), (28f, 3f), (8f, 8f) })
+{
+    var quad = PixelQuad.Fit(texture.Item1, texture.Item2, size.Item1, size.Item2);
+    Check(Math.Abs(quad.ScaleX * texture.Item1 - size.Item1) < .0001f &&
+          Math.Abs(quad.ScaleY * texture.Item2 - size.Item2) < .0001f &&
+          Math.Abs(quad.OriginX * quad.ScaleX - size.Item1 / 2) < .0001f &&
+          Math.Abs(quad.OriginY * quad.ScaleY - size.Item2 / 2) < .0001f,
+          "sprite size and center are independent of the pixel texture dimensions");
+}
+using (var catalog = New())
+{
+    var neutral = catalog.DefaultConfiguration();
+    var audit = new SpellAudit(new[] { "LIGHT_BULLET", "DAMAGE", "BOMB", "DAMAGE_RANDOM", "MANA_REDUCE" }, New, neutral);
+    while (audit.Step()) { }
+    Check(audit.Report.Complete && audit.Report.Cases.Count == 15, "audit runs three isolated contexts per spell");
+    var sparkCase = audit.Report.Cases.First(c => c.Spell == "LIGHT_BULLET");
+    Check(sparkCase.Status == SpellAuditStatus.DemoWithGaps && sparkCase.Inspection!.Missing.Any(s => s.Contains("damage_critical_chance")), "audit flags ignored spark critical chance despite a renderable entity");
+    Check(audit.Report.Cases.First(c => c.Spell == "BOMB").Status == SpellAuditStatus.Unsupported, "audit detects unported bomb entity");
+    Check(audit.Report.Cases.Where(c => c.Spell == "DAMAGE_RANDOM").All(c => c.Status == SpellAuditStatus.ScriptError), "audit captures native API errors without stopping the batch");
+    Check(audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.NoProjectile) &&
+          audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.DemoWithGaps), "utility spells are tested with follow-up projectiles");
+    Check(audit.Report.Cases.Any(c => c.Spell == "DAMAGE" && c.Inspection != null && c.Inspection.Missing.Any(m => m.Contains("extra_entities"))), "audit reports ignored native effect entities");
+    var nestedInspection = DemoCapabilities.Inspect(trigger, neutral);
+    Check(nestedInspection.ProjectileCount > 1 && nestedInspection.TriggerCount > 0 && nestedInspection.Missing.Any(m => m.Contains("extra_entities")), "audit inspects nested payload configuration");
+    using var parsed = JsonDocument.Parse(audit.Report.Json());
+    Check(parsed.RootElement.GetProperty("Complete").GetBoolean() && parsed.RootElement.GetProperty("Cases").GetArrayLength() == 15 &&
+          parsed.RootElement.GetProperty("Limits").GetString()!.Contains("No collision"), "audit export retains every case and states coverage limits");
+}
 Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
 if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 return 0;

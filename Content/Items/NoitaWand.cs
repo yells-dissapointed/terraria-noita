@@ -90,7 +90,10 @@ public class NoitaWand : ModItem
             test.Configure(draft.Configuration());
             var plan = test.Cast(draft.ManaMax, draft.AlwaysCast);
             trace.Capture(plan); DemoProjectileAdapter.Validate(plan.Root);
-            trace.Event("Renderer supports this entity tree. Preview does not simulate collisions or timing.");
+            var inspection = DemoCapabilities.Inspect(plan, test.DefaultConfiguration());
+            foreach (string missing in inspection.Missing) trace.Event("NOT IMPLEMENTED: " + missing);
+            trace.Event(inspection.ProjectileCount == 0 ? "No projectile in this cast; try a follow-up spell." :
+                "Demo entity tree accepted. Visuals, collisions and native fidelity require in-game checks.");
         }
         catch (Exception e) { trace.Fail(e.Message); }
         finally { if (test != null) ModContent.GetInstance<AdapterSystem>().Release(test); }

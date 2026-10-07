@@ -200,3 +200,8 @@ function bridge_cast(request)
     end)
 end
 function bridge_version() return _VERSION end
+function bridge_defaults()
+    local defaults = {}
+    ConfigGunActionInfo_Init(defaults)
+    return json(defaults)
+end

@@ -9,17 +9,14 @@ using terrarianoita.Content.Projectiles;
 
 namespace terrarianoita.Common;
 
-/// <summary>Explicit two-entity rendering demo, not a Noita component engine.</summary>
+/// <summary>Explicit three-entity rendering demo, not a Noita component engine.</summary>
 public static class DemoProjectileAdapter
 {
-    private const string Spark = "data/entities/projectiles/deck/light_bullet.xml";
-    private const string BlueSpark = "data/entities/projectiles/deck/light_bullet_blue.xml";
-    private const string Chainsaw = "data/entities/projectiles/deck/chainsaw.xml";
     public static void Validate(ShotPlan shot)
     {
         foreach (var node in shot.Projectiles)
         {
-            if (node.Entity != Spark && node.Entity != BlueSpark && node.Entity != Chainsaw)
+            if (!DemoCapabilities.SupportsEntity(node.Entity))
                 throw new NotSupportedException("The projectile demo cannot render " + node.Entity);
             foreach (var trigger in node.Triggers) Validate(trigger.Payload);
         }
@@ -31,8 +28,8 @@ public static class DemoProjectileAdapter
         direction.Normalize();
         foreach (var node in shot.Projectiles)
         {
-            bool chainsaw = node.Entity == Chainsaw;
-            double baseDamage = chainsaw ? 13 : node.Entity == BlueSpark ? 4 : 3;
+            bool chainsaw = node.Entity == DemoCapabilities.Chainsaw;
+            double baseDamage = chainsaw ? 13 : node.Entity == DemoCapabilities.BlueSpark ? 4 : 3;
             double addition = shot.Number("damage_projectile_add") + (chainsaw ? shot.Number("damage_slice_add") : 0);
             // Prototype conversion: 25 HP per internal damage unit. Native entity effects are not replicated.
             int damage = Math.Max(1, (int)player.GetTotalDamage(DamageClass.Magic).ApplyTo((float)(baseDamage + addition * 25)));
