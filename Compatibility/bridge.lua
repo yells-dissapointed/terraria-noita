@@ -205,3 +205,10 @@ function bridge_defaults()
     ConfigGunActionInfo_Init(defaults)
     return json(defaults)
 end
+function bridge_catalog()
+    local cards = array({})
+    for _, action in ipairs(actions) do
+        cards[#cards + 1] = { Id = action.id, Sprite = action.sprite or '', Type = action.type or -1 }
+    end
+    return json(cards)
+end

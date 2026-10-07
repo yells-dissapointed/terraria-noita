@@ -26,7 +26,7 @@ Windows x64 and Linux x64 LuaJIT libraries are included. macOS requires building
 an appropriate native library; it has not been validated. See [Native/README.md](Native/README.md).
 The wand starts with its own 100 mana pool, displayed in its tooltip.
 
-## Editor and debugging (v0.4.0)
+## Editor and debugging (v0.5.0)
 
 Right-click while holding a wand. Changes are made to a draft until you click
 **Apply**. Choose spells from the palette to append slots; use the up/down buttons
@@ -59,7 +59,7 @@ or at the hand if a wall blocks that offset. Chainsaw is a visible stationary
 base 8 frames before lifetime modifiers. It does not dig Terraria blocks or
 replicate Noita's terrain effects.
 
-## Separate live debugging wand (v0.4.0)
+## Separate live debugging wand (v0.5.0)
 
 Craft **Spell Debug Wand** with **one dirt block at a workbench**. It is a cyan
 variant of the wand. Left-click casts the selected test case and advances to the
@@ -73,14 +73,18 @@ The default context adds four spark bolts after the tested spell, so modifiers
 and trigger payloads have something to act on. Choose Solo, Always cast or All
 three contexts to inspect different behavior. Every case starts with a fresh
 non-shuffle deck, unlimited uses and 10000 test mana. The ordinary wand's mana
-and deck are unaffected. Supported entity trees emit real Terraria demo
-projectiles; unsupported trees and native API failures are logged and skipped.
-The scanner does not draw substitute effects for unported entities.
+and deck are unaffected. **XML/sprite preview (harmless)** is the default: it
+loads original local sprites and basic XML motion/lifetime settings for emitted
+entities. Missing graphics use orange labeled entity markers. Cyan diagnostic
+cards identify no output, Lua errors or unexercised targets and do not count as
+emitted roots. Preset buttons make targeted rendering/trigger tests easy.
+**Gameplay demo** mode retains the three existing damage adapters.
 
 Before each case, the tool removes its own previous projectiles and suppresses
 cleanup-triggered payloads. Longer lifetimes/timers may therefore be truncated
 by the chosen interval. Live JSON reports include attempted recipes, missing
-effects, actual root spawn counts, later collision/trigger events, the loaded
+effects, actual root spawn counts, separate diagnostic-card counts, full imported
+XML source nodes, per-entity profiles/visual evidence, later collision/trigger events, the loaded
 mod version and its file path. Reports are saved under
 `<tModLoader save folder>/terrarianoita/debug/`. Auto completion saves after the
 last observation interval; Save report also works during or after a run.
@@ -95,20 +99,21 @@ checkout before using Build + Reload.
 
 ## What is imported, and what still needs implementation
 
-The host imports the original Noita **wand/spell Lua** from local extracted
-files. It currently does not interpret the spell entities' XML component
-definitions, import their sprites/animations or run the native Noita engine.
-The projectile adapter implements only spark, blue spark and chainsaw paths,
-with prototype rendering and physics. Many modifier cards can act on those
-paths, which is why 190 spells have a drawable setup; this is not 190 distinct
-native effects.
+The host imports original Noita **wand/spell Lua**, complete entity XML source
+nodes/attributes and original PNG/sprite-sheet metadata from local extracted
+files. The importer resolves bases, component overrides/removal and retains
+unmapped data. The debug wand visualizes emitted entities using original sprites
+or clearly labeled markers, approximate speed/gravity/drag/lifetime, and
+already-built trigger payloads. The ordinary wand also uses original sprites
+for its three supported entity paths, keeping its existing gameplay adapter.
 
-Broader coverage requires an entity/component compatibility layer: XML base
-inheritance, projectile data, sprite animation, movement, homing, explosions,
-statuses and missing native APIs, then material and terrain interactions.
-Loading more definitions alone cannot supply engine behavior. Most effects can
-be implemented in stages; exact Noita terrain/material behavior would require a
-substantial additional simulation inside Terraria.
+The supplied-data audit loaded **197 emitted entity definitions**, **93 with
+usable sprite metadata** and **104 marker-only**. This establishes data/frame
+coverage, not GPU rendering or native behavior. See [DEBUG_WAND.md](DEBUG_WAND.md)
+for useful in-game tests and report meanings. The native engine and most
+component behavior are deferred: explosions, terrain/materials, homing,
+statuses, particles, physics bodies, audio and entity Lua scripts need further
+implementation. Merely loading a definition does not execute those systems.
 
 ## Automatic spell audit
 
@@ -149,10 +154,11 @@ complete action table does **not** establish that every spell is supported.
 
 ## Scope and remaining work
 
-- **Projectile demo:** only spark bolt, blue spark bolt and chainsaw entity paths are rendered.
-  Speed, gravity, spread, lifetime, collision and damage conversion are prototype
-  values. Noita XML components, materials, terrain, explosions, statuses, perks
-  and native physics have not been ported.
+- **Entity visualization:** the debug wand imports full XML data and sprite
+  metadata with bounded approximate movement and neutral contact/payload tests.
+  Labels distinguish missing graphics from failed/no-output casts. The gameplay
+  adapter still supports only spark, blue spark and chainsaw; native components
+  and materials/terrain are deferred.
 - **Scheduling:** the host records raw reload requests, including fractions and
   negatives. The demo uses an approximate cooldown. Noita's native integer
   conversion and complete reload/frame scheduling are not reproduced.
@@ -164,16 +170,16 @@ complete action table does **not** establish that every spell is supported.
 - **Persistence/networking:** edited definitions and mana are saved with the item.
   The active Lua draw/discard position resets after loading, cloning or applying
   edits. Multiplayer is not implemented.
-- **Verification:** 101 original-script, path, editor serialization and diagnostic
-  checks pass in the standalone harness. Eight additional checks against the
+- **Verification:** 114 original-script, path, editor serialization and diagnostic
+  checks pass in the standalone harness. Ten additional checks against the
   packaged mod verify real tModLoader item save/load, cloning, the chainsaw
   damage hitbox, packaged sprite geometry, build identity, debug-item persistence,
-  clone isolation and payload suppression during debug cleanup. The mod builds and packages with tModLoader 2026.08.3.0 with zero
+  clone isolation, harmless XML visualization and payload suppression during cleanup. The mod builds and packages with tModLoader 2026.08.3.0 with zero
   compilation errors or warnings. The user confirmed the previous runtime loads and fires on Windows. The new
   editor, hitboxes and graphics still need a graphical in-game playtest.
 
-Next priorities are the editor/gameplay playtest, recovered native RNG and reload
-scheduling, then a broader entity/component adapter.
+Next priorities are the imported sprite/trigger playtest, choosing per-spell
+behavior from debug reports, then component execution and recovered native APIs.
 
 ## Standalone checks
 
@@ -217,3 +223,15 @@ File/process libraries are removed from the embedded Lua environment. Casts have
 instruction, projectile-count and trigger-depth limits. These are operational
 bounds for the prototype, not a security sandbox for arbitrary Lua code.
 Keep original game data outside the repository or under ignored `LocalData/`.
+
+## XML/sprite data audit
+
+After producing the spell-audit JSON, run:
+
+```sh
+dotnet run --project Tools/XmlAudit -- /absolute/path/to/extracted-noita spell-audit.json xml-asset-audit.json
+```
+
+This audits inherited definitions, PNG headers/frame bounds and deferred
+components for emitted entity paths. It does not require a graphics device and
+does not prove successful GPU rendering.

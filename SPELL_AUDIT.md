@@ -1,5 +1,11 @@
 # Spell audit — Terraria Noita v0.3.0
 
+The reference counts below were reproduced unchanged in v0.5.0. They measure
+the conservative three-entity gameplay adapter. The separate XML/sprite preview
+now loads all 197 entity paths emitted by these casts: 93 with sprite metadata
+and 104 labeled markers. This visualization does not change native support
+classifications. See [DEBUG_WAND.md](DEBUG_WAND.md) for current tests and limits.
+
 All 422 spell IDs from the supplied original Noita action table were exercised in
 three independent contexts: solo, followed by four spark bolts, and as an
 always-cast with four spark bolts. Each context uses a fresh LuaJIT 2.0.4 state,

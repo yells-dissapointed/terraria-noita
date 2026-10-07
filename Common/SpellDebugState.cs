@@ -14,7 +14,7 @@ public sealed class SpellDebugState : UIState
     private readonly Action close;
     private UIPanel panel = null!;
     private UIText cursor = null!, status = null!, detail = null!;
-    private UITextPanel<string> auto = null!, context = null!, interval = null!;
+    private UITextPanel<string> auto = null!, context = null!, interval = null!, visualization = null!;
     public SpellDebugState(SpellDebugWand wand, Action closePanel) { Wand = wand; close = closePanel; }
     private static void Place(UIElement e, float x, float y, float width, float height)
     {
@@ -32,7 +32,7 @@ public sealed class SpellDebugState : UIState
     public override void OnInitialize()
     {
         panel = new UIPanel { BackgroundColor = new Color(20, 32, 45) }; panel.SetPadding(12);
-        panel.Left.Set(-630, 1); panel.Top.Set(60, 0); panel.Width.Set(610, 0); panel.Height.Set(330, 0); Append(panel);
+        panel.Left.Set(-630, 1); panel.Top.Set(60, 0); panel.Width.Set(610, 0); panel.Height.Set(446, 0); Append(panel);
         Label($"Spell debugging wand | v{Wand.Mod.Version}", 0);
         Button("Close", close, 508, 0, 72);
         cursor = Label("", 34); status = Label("", 62); detail = Label("", 84);
@@ -50,8 +50,16 @@ public sealed class SpellDebugState : UIState
         Button("Clear shots", Wand.CleanupCurrent, 438, 154, 104);
         Label("Fresh deck, unlimited uses and 10000 mana for each isolated test.", 198);
         Label("Auto stops at the end. Switching items stops; inventory/chat pauses.", 220);
-        Label("Unsupported entities are skipped. Missing native effects remain logged.", 242);
+        Label("Orange: emitted entity marker. Cyan card: no target projectile claimed.", 242);
+        visualization = Button("", Wand.ChangeVisualization, 0, 272, 320);
         Button("Loaded file", () => Main.NewText(BuildIdentity.LoadedPath(Wand.Mod), Color.Cyan), 438, 272, 104);
+        Label("XML preview imports sprites/physics; native effects remain deferred.", 312);
+        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error" };
+        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM" };
+        for (int i = 0; i < ids.Length; i++)
+        {
+            string spell = ids[i]; Button(names[i], () => Wand.Select(spell), i % 4 * 140, 342 + i / 4 * 34, 132);
+        }
     }
     public override void Update(GameTime gameTime)
     {
@@ -65,6 +73,7 @@ public sealed class SpellDebugState : UIState
         auto.SetText(Wand.Automatic ? "Stop auto" : "Start auto");
         context.SetText(Wand.Mode switch { Core.SpellDebugMode.Solo => "Context: Solo", Core.SpellDebugMode.AlwaysCast => "Context: Always cast", Core.SpellDebugMode.AllContexts => "Context: All three", _ => "Context: With sparks" });
         interval.SetText($"Interval: {Wand.Interval / 60f:0.#} seconds");
+        visualization.SetText(Wand.VisualPreview ? "Mode: XML/sprite preview (harmless)" : "Mode: gameplay demo (3 entities)");
         base.Update(gameTime);
     }
 }

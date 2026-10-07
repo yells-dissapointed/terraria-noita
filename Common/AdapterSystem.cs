@@ -15,6 +15,21 @@ namespace terrarianoita.Common;
 public sealed class AdapterSystem : ModSystem
 {
     private readonly HashSet<Lua51Runtime> runtimes = new();
+    private ImportedSpriteCache? assets;
+    private string assetRoot = "";
+    public ImportedSpriteCache Assets
+    {
+        get
+        {
+            string root = ModContent.GetInstance<NoitaConfig>().ExtractedDataRoot;
+            if (assets == null || root != assetRoot)
+            {
+                assets?.Dispose(); assets = null;
+                assets = new ImportedSpriteCache(root); assetRoot = root;
+            }
+            return assets;
+        }
+    }
     public override void OnWorldLoad()
     {
         if (!Main.dedServ) Main.NewText(BuildIdentity.Label(Mod), Color.LightPink);
@@ -48,6 +63,7 @@ public sealed class AdapterSystem : ModSystem
     {
         foreach (var runtime in runtimes) runtime.Dispose();
         runtimes.Clear();
+        assets?.Dispose(); assets = null; assetRoot = "";
     }
     public override void OnWorldUnload() => DisposeAll();
     public override void Unload() => DisposeAll();

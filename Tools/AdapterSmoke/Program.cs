@@ -266,6 +266,8 @@ using (var catalog = New())
 using (var catalogForScan = New())
 {
     var ids = catalogForScan.SpellIds();
+    var cards = catalogForScan.SpellCards();
+    Check(cards.Length == 422 && cards.Select(c => c.Id).OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(ids) && cards.Single(c => c.Id == "BOMB").Sprite.EndsWith("bomb.png"), "original spell metadata includes every card and its local image");
     var scan = new SpellDebugSequence(ids); scan.SetMode(SpellDebugMode.AllContexts);
     var seen = new HashSet<string>();
     while (!scan.Complete)
@@ -282,6 +284,8 @@ using (var catalogForScan = New())
     scan.Move(10000); Check(scan.Index == 421, "next clamps to final valid case");
     scan.SetMode(SpellDebugMode.AlwaysCast);
     Check(scan.Current().AlwaysCast.Single() == ids[0] && scan.Current().Deck.All(id => id == "LIGHT_BULLET"), "always-cast debug recipe uses the selected spell and support sparks");
+    scan.SetMode(SpellDebugMode.AllContexts); scan.Select("LIGHT_BULLET_TIMER");
+    Check(scan.Spell == "LIGHT_BULLET_TIMER" && scan.ContextIndex == 0, "preset selects the first context of the requested spell");
     var neutral = catalogForScan.DefaultConfiguration();
     int released = 0;
     void ReleaseCase(Lua51Runtime r) { r.Dispose(); released++; }
@@ -295,8 +299,54 @@ using (var catalogForScan = New())
     var liveCase = liveJson.RootElement.GetProperty("cases")[0];
     Check(liveCase.GetProperty("root_projectiles_spawned").GetInt32() == 1 &&
           liveCase.GetProperty("trace").GetProperty("runtime_events")[0].GetString()!.Contains("training target") &&
-          liveJson.RootElement.GetProperty("loaded_mod_version").GetString() == "0.4.0", "live report includes later collision events, actual root spawn count and build identity");
+          liveJson.RootElement.GetProperty("loaded_mod_version").GetString() == BuildStamp.Version, "live report includes later collision events, actual root spawn count and build identity");
+    var preview = new SpellLiveCase { Test = failedCase, DiagnosticCardsSpawned = 1, VisualPreview = true };
+    liveReport.Add(preview);
+    preview.VisualEntities.Add(new VisualEntityEvidence { Entity = "fixture.xml", Appearance = "entity marker" });
+    using var previewJson = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "fixture.tmod"));
+    var failedJson = previewJson.RootElement.GetProperty("cases")[1];
+    Check(failedJson.GetProperty("root_projectiles_spawned").GetInt32() == 0 && failedJson.GetProperty("diagnostic_cards_spawned").GetInt32() == 1 && failedJson.GetProperty("visual_entities").GetArrayLength() == 1,
+        "diagnostic cards never become emitted roots and late visual evidence is retained");
+    var source = NoitaXml.Parse("<Entity><LuaComponent script_source_file='native.lua'/></Entity>");
+    preview.VisualEntities[0].ImportedSources["data/fixture.xml"] = source;
+    var another = new VisualEntityEvidence(); another.ImportedSources["data/fixture.xml"] = source; preview.VisualEntities.Add(another);
+    using var xmlReport = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "fixture.tmod"));
+    Check(xmlReport.RootElement.GetProperty("imported_xml").EnumerateObject().Count() == 1 &&
+          xmlReport.RootElement.GetProperty("imported_xml").GetProperty("data/fixture.xml").GetProperty("Children")[0].GetProperty("Name").GetString() == "LuaComponent" &&
+          !xmlReport.RootElement.GetProperty("cases")[1].GetProperty("visual_entities")[0].TryGetProperty("ImportedSources", out _), "report retains complete deferred XML data once per source instead of once per projectile");
 }
+var assets = new NoitaAssetCatalog(data);
+var sparkAsset = assets.Entity("data/entities/projectiles/deck/light_bullet.xml");
+var sparkProfile = assets.Profile(sparkAsset);
+Check(sparkAsset.Sources.Count >= 2 && sparkProfile.Sprites.Count > 0 && Math.Abs(sparkProfile.SpeedPerFrame - 800 / 60d) < .001, "base inheritance and XML mean speed are imported for spark");
+var sprite = sparkProfile.Sprites[0];
+Check(sprite.Frame(0) == new SpriteFrame(0, 1, 9, 9) && sprite.Frame(12) == new SpriteFrame(10, 1, 9, 9) && sprite.Frame(24) == sprite.Frame(0), "original spark sheet uses cropped 9x9 frames with 10px stride and bounded looping");
+Check(assets.Profile(assets.Entity("data/entities/projectiles/bomb.xml")).Sprites.Any(), "physics image shape provides original bomb sprite");
+bool pathRejected = false;
+try { assets.LocalPath("data/../outside.xml"); } catch (InvalidOperationException) { pathRejected = true; }
+Check(pathRejected, "asset path rejects traversal");
+var warnings = new List<string>();
+var tolerant = NoitaXml.Parse("<Entity tags='a' <!-- in-tag comment --> tags='b'><ProjectileComponent speed_min='12' /></Entity>", warnings);
+Check(tolerant.Get("tags") == "b" && warnings.Count == 1 && tolerant.Children[0].Number("speed_min") == 12, "permissive XML records duplicate attributes and handles inline comments");
+bool declarationRejected = false;
+try { NoitaXml.Parse("<!DOCTYPE Entity SYSTEM 'file:///fixture'><Entity />"); } catch (InvalidOperationException) { declarationRejected = true; }
+Check(declarationRejected, "XML does not resolve external entities");
+string xmlFixture = Path.Combine(Path.GetTempPath(), "Noita XML checks " + Guid.NewGuid().ToString("N"));
+try
+{
+    foreach (string path in Lua51Runtime.SourcePaths)
+    { string file = Path.Combine(xmlFixture, path); Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllText(file, "fixture"); }
+    File.WriteAllText(Path.Combine(xmlFixture, "data/base.xml"), "<Entity><ProjectileComponent speed_min='60'><config_explosion damage='2' /></ProjectileComponent><VelocityComponent gravity_y='3600'/><Entity name='child'/></Entity>");
+    File.WriteAllText(Path.Combine(xmlFixture, "data/derived.xml"), "<Entity><Base file='data/base.xml'><ProjectileComponent speed_min='120'><config_explosion damage='3'/></ProjectileComponent><VelocityComponent _remove_from_base='1'/></Base><LuaComponent script_source_file='unknown.lua'/></Entity>");
+    var fixtureAssets = new NoitaAssetCatalog(xmlFixture); var derived = fixtureAssets.Entity("data/derived.xml");
+    Check(derived.Component("ProjectileComponent")!.Number("speed_min") == 120 && derived.Component("ProjectileComponent")!.Children[0].Number("damage") == 3 && derived.Component("VelocityComponent") == null, "base nested overrides and component removal work");
+    Check(derived.SourceDefinition.Children[0].Name == "Base" && fixtureAssets.Entity("data/base.xml").SourceDefinition.Children.Any(c => c.Name == "Entity") && derived.DeferredComponents.Contains("LuaComponent"), "complete source nodes and deferred scripts remain data without execution");
+    File.WriteAllText(Path.Combine(xmlFixture, "data/cycle.xml"), "<Entity><Base file='data/cycle.xml'/></Entity>");
+    bool cycleRejected = false;
+    try { fixtureAssets.Entity("data/cycle.xml"); } catch (InvalidOperationException) { cycleRejected = true; }
+    Check(cycleRejected, "XML inheritance cycle fails explicitly");
+}
+finally { if (Directory.Exists(xmlFixture)) Directory.Delete(xmlFixture, true); }
 Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
 if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 return 0;

@@ -25,6 +25,12 @@ public sealed class SpellDebugSequence
     public void Advance() { if (!Complete) Index++; }
     public void Move(int delta) => Index = Math.Clamp(Index + delta, 0, Total - 1);
     public void Restart() => Index = 0;
+    public void Select(string spell)
+    {
+        int index = Array.IndexOf(ids, spell);
+        if (index < 0) throw new ArgumentException("Unknown spell: " + spell);
+        Index = index * (Mode == SpellDebugMode.AllContexts ? 3 : 1);
+    }
     public void SetMode(SpellDebugMode mode)
     {
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));

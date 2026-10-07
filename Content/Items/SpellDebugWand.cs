@@ -26,12 +26,14 @@ public sealed class SpellDebugWand : ModItem
     public int Interval { get; private set; } = 120;
     public string Status { get; private set; } = "Left-click: test next spell. Right-click: scan controls.";
     public SpellDebugMode Mode { get; private set; } = SpellDebugMode.FollowedBySparks;
+    public bool VisualPreview { get; private set; } = true;
     private Dictionary<string, JsonElement>? defaults;
+    private Dictionary<string, SpellCard>? cards;
     private int countdown, manualCooldown;
     public override ModItem Clone(Item newEntity)
     {
         var clone = (SpellDebugWand)base.Clone(newEntity);
-        clone.Sequence = null; clone.Report = new(); clone.LastTrace = null; clone.defaults = null;
+        clone.Sequence = null; clone.Report = new(); clone.LastTrace = null; clone.defaults = null; clone.cards = null;
         clone.Automatic = false; clone.countdown = clone.manualCooldown = 0;
         return clone;
     }
@@ -62,6 +64,7 @@ public sealed class SpellDebugWand : ModItem
         try
         {
             defaults = runtime.DefaultConfiguration(); Sequence = new(runtime.SpellIds()); Sequence.SetMode(Mode);
+            cards = new(); foreach (var card in runtime.SpellCards()) cards[card.Id] = card;
         }
         finally { manager.Release(runtime); }
     }
@@ -82,12 +85,22 @@ public sealed class SpellDebugWand : ModItem
         try { Stop(); Initialize(); Sequence!.Move(delta); Status = "Selected " + Sequence.Spell; }
         catch (Exception e) { Status = e.Message; }
     }
+    public void Select(string spell)
+    {
+        try { Stop(); Initialize(); Sequence!.Select(spell); Status = "Selected " + spell + ". Close controls and left-click, or Test current."; }
+        catch (Exception e) { Status = e.Message; }
+    }
     public void ChangeContext()
     {
         Stop(); Mode = (SpellDebugMode)(((int)Mode + 1) % 4); Sequence?.SetMode(Mode);
         Status = "Context changed; scan restarted. Earlier results remain in the report.";
     }
     public void ChangeInterval() => Interval = Interval switch { 60 => 120, 120 => 300, 300 => 600, _ => 60 };
+    public void ChangeVisualization()
+    {
+        Stop(); CleanupCurrent(); VisualPreview = !VisualPreview;
+        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Gameplay demo: only sparks and chainsaw are supported; shots can deal damage.";
+    }
     public void Restart()
     {
         Stop(); Sequence?.Restart(); Status = "Scan restarted; earlier results remain in the report.";
@@ -99,6 +112,8 @@ public sealed class SpellDebugWand : ModItem
         {
             if (projectile is { active: true, ModProjectile: NoitaSpark spark } && ReferenceEquals(spark.Diagnostics, LastTrace))
             { spark.CancelDebugPayloads(); projectile.Kill(); }
+            else if (projectile is { active: true, ModProjectile: NoitaVisualProjectile visual } && ReferenceEquals(visual.Diagnostics, LastTrace))
+            { visual.CancelDebugPayloads(); projectile.Kill(); }
         }
     }
     public void TestNext(Player player, IEntitySource? source = null, bool advance = true)
@@ -114,10 +129,30 @@ public sealed class SpellDebugWand : ModItem
             var trace = new CastDiagnostics(); LastTrace = trace;
             var definition = new WandDefinition { Deck = test.Deck, AlwaysCast = test.AlwaysCast, ManaMax = 10000 };
             trace.Begin($"Live debug: {test.Spell} / {test.Context}", definition, 10000);
-            var result = new SpellLiveCase { Test = test, Trace = trace }; Report.Add(result);
+            var result = new SpellLiveCase { Test = test, Trace = trace, VisualPreview = VisualPreview }; Report.Add(result);
             if (test.Plan != null) trace.Capture(test.Plan);
             foreach (string missing in test.Inspection?.Missing ?? new List<string>()) trace.Event("NOT IMPLEMENTED: " + missing);
-            if (test.Status is SpellAuditStatus.Unsupported or SpellAuditStatus.ScriptError or SpellAuditStatus.NotExercised)
+            Vector2 hand = player.RotatedRelativePoint(player.MountedCenter), aim = Main.MouseWorld - hand;
+            if (aim.LengthSquared() < .001f) aim = new Vector2(player.direction, 0);
+            aim.Normalize(); Vector2 muzzle = hand + aim * 16;
+            if (!Collision.CanHitLine(hand, 1, 1, muzzle, 1, 1)) muzzle = hand;
+            var castSource = source ?? player.GetSource_ItemUse(Item);
+            if (VisualPreview)
+            {
+                if (test.Plan != null) result.RootProjectilesSpawned = VisualProjectileAdapter.Emit(test.Plan.Root, castSource, player, muzzle, aim, result);
+                string message = test.Status == SpellAuditStatus.ScriptError ? "SCRIPT FAILED — CARD ONLY" :
+                    test.Status == SpellAuditStatus.NotExercised ? "TARGET NOT EXERCISED — CARD" :
+                    result.RootProjectilesSpawned == 0 ? "NO PROJECTILE — CARD ONLY" : "";
+                if (message.Length > 0)
+                {
+                    cards!.TryGetValue(test.Spell, out var card);
+                    result.DiagnosticCardsSpawned = VisualProjectileAdapter.Card(castSource, player, hand + aim * 36, card, message, result);
+                }
+                if (test.Error.Length > 0) trace.Fail(test.Error);
+                trace.Event($"XML visual test: {result.RootProjectilesSpawned} emitted root entities; {result.DiagnosticCardsSpawned} diagnostic cards. Audit status {test.Status} remains unchanged.");
+                Status = $"{test.Spell}: {result.RootProjectilesSpawned} visual root(s), {result.DiagnosticCardsSpawned} card(s); {test.Status}.";
+            }
+            else if (test.Status is SpellAuditStatus.Unsupported or SpellAuditStatus.ScriptError or SpellAuditStatus.NotExercised)
             {
                 trace.Fail(test.Error.Length > 0 ? test.Error : "No live emission: unsupported entity tree or unexercised action.");
                 Status = $"Skipped {test.Spell}: {test.Status}. Full reason is in the report.";
@@ -125,11 +160,7 @@ public sealed class SpellDebugWand : ModItem
             else
             {
                 DemoProjectileAdapter.Validate(test.Plan!.Root);
-                Vector2 hand = player.RotatedRelativePoint(player.MountedCenter), aim = Main.MouseWorld - hand;
-                if (aim.LengthSquared() < .001f) aim = new Vector2(player.direction, 0);
-                aim.Normalize(); Vector2 muzzle = hand + aim * 16;
-                if (!Collision.CanHitLine(hand, 1, 1, muzzle, 1, 1)) muzzle = hand;
-                result.RootProjectilesSpawned = DemoProjectileAdapter.Emit(test.Plan.Root, source ?? player.GetSource_ItemUse(Item), player, muzzle, aim, trace, true);
+                result.RootProjectilesSpawned = DemoProjectileAdapter.Emit(test.Plan.Root, castSource, player, muzzle, aim, trace, true);
                 trace.Event($"Debug cast: {result.RootProjectilesSpawned} root projectile(s). Gaps: {test.Inspection!.Missing.Count}. Native fidelity unverified.");
                 Status = $"Tested {test.Spell}: {result.RootProjectilesSpawned} root(s), {test.Inspection.Missing.Count} missing effect field(s).";
             }
@@ -163,18 +194,19 @@ public sealed class SpellDebugWand : ModItem
         if (manualCooldown > 0) manualCooldown--;
         if (player.dead || !ReferenceEquals(player.HeldItem.ModItem, this)) Stop();
     }
-    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; }
+    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); }
     public override void LoadData(TagCompound tag)
     {
         int mode = tag.GetInt("mode"); Mode = Enum.IsDefined(typeof(SpellDebugMode), mode) ? (SpellDebugMode)mode : SpellDebugMode.FollowedBySparks;
         int interval = tag.GetInt("interval"); Interval = interval is 60 or 120 or 300 or 600 ? interval : 120;
-        Stop(); Sequence = null; defaults = null; Report = new(); LastTrace = null;
+        VisualPreview = !tag.ContainsKey("visualPreview") || tag.GetByte("visualPreview") != 0;
+        Stop(); Sequence = null; defaults = null; cards = null; Report = new(); LastTrace = null;
     }
     public override void ModifyTooltips(List<TooltipLine> tooltips)
     {
         tooltips.Add(new TooltipLine(Mod, "LoadedVersion", BuildIdentity.Label(Mod)));
         tooltips.Add(new TooltipLine(Mod, "DebugUse", "Left-click tests the next spell; right-click opens automatic scan controls"));
-        tooltips.Add(new TooltipLine(Mod, "DebugLimits", "Fresh decks and full test mana; unsupported entities are logged and skipped"));
+        tooltips.Add(new TooltipLine(Mod, "DebugLimits", "XML/sprite preview is harmless; orange entity markers and cyan diagnostic cards label gaps"));
     }
     public override void AddRecipes() => CreateRecipe().AddIngredient(ItemID.DirtBlock).AddTile(TileID.WorkBenches).Register();
 }

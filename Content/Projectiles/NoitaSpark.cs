@@ -19,6 +19,9 @@ public sealed class NoitaSpark : ModProjectile
     private int age;
     private bool chainsaw, debugVisible;
     private Color sparkColor = Color.HotPink;
+    private string entityPath = "";
+    private NoitaVisualProfile? imported;
+    private bool importAttempted;
     public CastDiagnostics? Diagnostics => trace;
     public void CancelDebugPayloads()
     {
@@ -28,6 +31,7 @@ public sealed class NoitaSpark : ModProjectile
     public void Configure(ProjectilePlan node, bool isChainsaw, Vector2 castDirection, CastDiagnostics? diagnostics, bool showHitbox)
     {
         triggers = new TriggerRunner(node.Triggers); chainsaw = isChainsaw;
+        entityPath = node.Entity; imported = null; importAttempted = false;
         direction = castDirection; trace = diagnostics; debugVisible = showHitbox;
         sparkColor = node.Entity.EndsWith("light_bullet_blue.xml") ? Color.LightBlue : Color.HotPink;
         if (chainsaw)
@@ -79,6 +83,20 @@ public sealed class NoitaSpark : ModProjectile
     {
         var pixel = TextureAssets.MagicPixel.Value;
         Vector2 center = Projectile.Center - Main.screenPosition;
+        bool importedDrawn = false;
+        if (!importAttempted)
+        {
+            importAttempted = true;
+            try
+            {
+                var catalog = ModContent.GetInstance<AdapterSystem>().Assets.Catalog;
+                imported = catalog.Profile(catalog.Entity(entityPath));
+            }
+            catch (System.Exception e) { trace?.Event("Sprite import fallback: " + e.Message); }
+        }
+        if (imported != null)
+            foreach (var sprite in imported.Sprites)
+                importedDrawn |= ModContent.GetInstance<AdapterSystem>().Assets.Draw(sprite, Projectile.Center, Projectile.rotation, age, 1, out _);
         void Draw(Color color, float rotation, float width, float height)
         {
             // MagicPixel is a texture, not necessarily a 1x1 bitmap. Normalize both
@@ -87,13 +105,13 @@ public sealed class NoitaSpark : ModProjectile
             Main.EntitySpriteDraw(pixel, center, pixel.Bounds, color, rotation,
                 new Vector2(quad.OriginX, quad.OriginY), new Vector2(quad.ScaleX, quad.ScaleY), SpriteEffects.None);
         }
-        if (chainsaw)
+        if (!importedDrawn && chainsaw)
         {
             for (int i = 0; i < 4; i++)
                 Draw(Color.Orange, Projectile.rotation + i * MathHelper.PiOver4, 28, 3);
             Draw(Color.LightYellow, 0, 8, 8);
         }
-        else
+        else if (!importedDrawn)
         {
             Draw(sparkColor * .6f, Projectile.rotation, 12, 8);
             Draw(Color.White, Projectile.rotation, 6, 3);

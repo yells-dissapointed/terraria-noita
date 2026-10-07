@@ -84,14 +84,17 @@ foreach (var texture in new[] { (1, 1), (2, 2), (20, 20), (256, 32) })
 Console.WriteLine("PASS: packaged draw geometry preserves a centered 12x8 spark across four texture dimensions");
 var debugType = mod.GetType("terrarianoita.Content.Items.SpellDebugWand")!;
 object debugWand = Activator.CreateInstance(debugType)!;
+if (!(bool)debugType.GetProperty("VisualPreview")!.GetValue(debugWand)!) throw new Exception("Visual preview must default on");
+debugType.GetMethod("ChangeVisualization")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeContext")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeInterval")!.Invoke(debugWand, null);
 object debugTag = Activator.CreateInstance(tagType)!; debugType.GetMethod("SaveData")!.Invoke(debugWand, new[] { debugTag });
 object debugRestored = Activator.CreateInstance(debugType)!; debugType.GetMethod("LoadData")!.Invoke(debugRestored, new[] { debugTag });
 if ((int)debugType.GetProperty("Interval")!.GetValue(debugRestored)! != 300 ||
     debugType.GetProperty("Mode")!.GetValue(debugRestored)!.ToString() != "Solo" ||
-    (bool)debugType.GetProperty("Automatic")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
-Console.WriteLine("PASS: debug wand saves its interval/context and loads with auto firing stopped");
+    (bool)debugType.GetProperty("Automatic")!.GetValue(debugRestored)! ||
+    (bool)debugType.GetProperty("VisualPreview")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
+Console.WriteLine("PASS: debug wand defaults to harmless preview, saves its controls and loads with auto firing stopped");
 object debugReport = debugType.GetProperty("Report")!.GetValue(debugWand)!;
 var liveCases = (System.Collections.IList)debugReport.GetType().GetProperty("Cases")!.GetValue(debugReport)!;
 liveCases.Add(Activator.CreateInstance(mod.GetType("terrarianoita.Core.SpellLiveCase")!)!);
@@ -107,4 +110,19 @@ method.Invoke(spark, new object?[] { node, true, direction, null, false });
 sparkType.GetMethod("CancelDebugPayloads")!.Invoke(spark, null);
 if (sparkType.GetField("triggers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(spark) != null) throw new Exception("Debug cleanup can fire a death payload");
 Console.WriteLine("PASS: debug cleanup detaches death/impact/timer payloads before projectile removal");
+var visualType = mod.GetType("terrarianoita.Content.Projectiles.NoitaVisualProjectile")!;
+object visual = Activator.CreateInstance(visualType)!;
+object visualProjectile = Activator.CreateInstance(entity.PropertyType)!; entity.SetValue(visual, visualProjectile);
+visualType.GetMethod("SetDefaults")!.Invoke(visual, null);
+if ((bool)ptype.GetField("friendly")!.GetValue(visualProjectile)! || (bool)ptype.GetField("hostile")!.GetValue(visualProjectile)! ||
+    (int)ptype.GetField("damage")!.GetValue(visualProjectile)! != 0 || (bool)visualType.GetMethod("CanDamage")!.Invoke(visual, null)!)
+    throw new Exception("XML visualization can deal damage");
+Console.WriteLine("PASS: packaged XML visualization is neutral and explicitly refuses all damage");
+object visualProfile = Activator.CreateInstance(mod.GetType("terrarianoita.Core.NoitaVisualProfile")!)!;
+object liveCase = Activator.CreateInstance(mod.GetType("terrarianoita.Core.SpellLiveCase")!)!;
+object visualEvidence = Activator.CreateInstance(mod.GetType("terrarianoita.Core.VisualEntityEvidence")!)!;
+visualType.GetMethod("Configure")!.Invoke(visual, new[] { node, visualProfile, direction, liveCase, visualEvidence });
+visualType.GetMethod("CancelDebugPayloads")!.Invoke(visual, null);
+if (visualType.GetField("triggers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(visual) != null) throw new Exception("Visual cleanup retains payloads");
+Console.WriteLine("PASS: cleanup of imported entities suppresses payloads independently of gameplay demo");
 return 0;
