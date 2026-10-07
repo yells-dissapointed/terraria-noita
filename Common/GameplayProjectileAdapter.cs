@@ -68,6 +68,7 @@ public static class GameplayProjectileAdapter
             projectile.timeLeft = (int)Math.Clamp(profile.Lifetime + shot.Number("lifetime_add"), 3, 3600);
             projectile.extraUpdates = 0; // XML lifetimes and payload timers are measured in 60 Hz frames.
             projectile.arrow = false; // Spell ammunition is not a recoverable arrow item.
+            projectile.noDropItem = true;
             var evidence = new VisualEntityEvidence { Entity = node.Entity, ProjectileId = id, Appearance = "Terraria sprite pending draw",
                 TerrariaAdapter = match.TerrariaProjectile, GameplayExecuted = true, PreviewProfile = profile,
                 PreviewLifetimeFrames = projectile.timeLeft, PreviewSpeedPerFrame = speed };
