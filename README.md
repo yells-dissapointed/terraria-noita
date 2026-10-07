@@ -5,6 +5,10 @@ Noita installation inside tModLoader. The C# bridge receives a completed cast
 plan and renders a small demonstration in Terraria. Original Noita code and
 assets are not included in this repository.
 
+v0.5.1 enlarges spell sprites and fallback visuals to 1.75× around their existing
+origins. Projectile positions and gameplay properties are unchanged. See
+[DEBUG_WAND.md](DEBUG_WAND.md) for the live-report findings and focused tests.
+
 ## Try it
 
 1. Clone this branch into your tModLoader `ModSources` folder, naming the folder

@@ -1,4 +1,17 @@
-# Spell Debug Wand v0.5.0
+# Spell Debug Wand v0.5.1
+
+Spell sprites, orange entity markers and fallback spark/chainsaw visuals now
+draw at **1.75×** their previous size, around the same origin. Damage, collision
+bounds, speed, lifetime and muzzle placement are unchanged. Diagnostic card
+icons retain their existing 2× size. The 256-world-pixel sprite cap still applies.
+Live reports include `spell_visual_scale` so comparisons identify the draw size.
+
+The supplied v0.5.0 live scan recorded 422 tests, 505 emitted roots and 24
+diagnostic cards. It recorded 389 original-sprite draws, 126 entity markers and
+7 pending draws (these include triggered children). Only the known nuke frame
+definition mismatch appeared as an import/draw error. 187 cases emitted only
+root sparks: the With sparks context deliberately gives modifiers a spark
+carrier, and unimplemented trails/attached effects can leave it looking plain.
 
 Craft with one dirt block at a workbench. Left-click tests the selected spell
 and advances; right-click opens controls. The default is **XML/sprite preview
@@ -8,8 +21,8 @@ Test current repeats a selection without advancing.
 
 ## Five useful in-game tests
 
-1. **Version and basic rendering:** verify the tooltip/HUD says v0.5.0, build
-   `xml-sprite-preview-1`. Use Spark in Solo context. Aim horizontally, vertically
+1. **Version and basic rendering:** verify the tooltip/HUD says v0.5.1, build
+   `spell-visual-scale-175`. Use Spark in Solo context. Aim horizontally, vertically
    and diagonally; repeat at another zoom level. Check that it starts near the
    hand and stays small and centered on its yellow outline. Test Bomb for an
    original solid sprite; it should remain harmless in preview mode.

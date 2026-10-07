@@ -95,7 +95,7 @@ public sealed class NoitaVisualProjectile : ModProjectile
         bool drawn = false;
         foreach (var sprite in profile.Sprites)
         {
-            bool ok = ModContent.GetInstance<AdapterSystem>().Assets.Draw(sprite, Projectile.Center, Projectile.rotation, age, card ? 2 : 1, out string error);
+            bool ok = ModContent.GetInstance<AdapterSystem>().Assets.Draw(sprite, Projectile.Center, Projectile.rotation, age, card ? 2 : SpellVisuals.Scale, out string error);
             drawn |= ok;
             if (!ok && drawErrors.Add(error))
             { evidence?.Gaps.Add(error); result?.Trace.Event("Sprite draw fallback: " + error); }
@@ -106,7 +106,8 @@ public sealed class NoitaVisualProjectile : ModProjectile
         if (!drawn)
         {
             var pixel = TextureAssets.MagicPixel.Value;
-            Main.spriteBatch.Draw(pixel, new Rectangle((int)center.X - 5, (int)center.Y - 5, 10, 10), color);
+            int size = card ? 10 : (int)Math.Round(10 * SpellVisuals.Scale);
+            Main.spriteBatch.Draw(pixel, new Rectangle((int)center.X - size / 2, (int)center.Y - size / 2, size, size), color);
         }
         // An outline remains visible even for transparent frames and one-frame particles.
         var p = TextureAssets.MagicPixel.Value;

@@ -44,6 +44,7 @@ public sealed class SpellLiveReport
     }
     public string Json(string loadedVersion, string loadedPath) => JsonSerializer.Serialize(new {
         version = 2, loaded_mod_version = loadedVersion, build = BuildStamp.Id, loaded_mod_path = loadedPath,
+        spell_visual_scale = SpellVisuals.Scale,
         started_utc = StartedUtc, dropped_cases = DroppedCases,
         imported_xml = Cases.SelectMany(c => c.VisualEntities).SelectMany(e => e.ImportedSources).GroupBy(p => p.Key).ToDictionary(g => g.Key, g => g.First().Value),
         notes = "Visual preview imports local XML and sprites and creates harmless entities with approximate movement. Labeled entity markers count as emitted entities; diagnostic cards do not. Lua failures, no output and unexercised actions remain distinct. Deferred native components/configuration are not executed. Gameplay demo still supports only three entities. Cleanup suppresses payloads and can cut effects short. GPU errors update appearance/gaps after spawn. Noita fidelity and visual appearance are not automatically verified.",

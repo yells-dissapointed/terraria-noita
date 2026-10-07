@@ -96,12 +96,12 @@ public sealed class NoitaSpark : ModProjectile
         }
         if (imported != null)
             foreach (var sprite in imported.Sprites)
-                importedDrawn |= ModContent.GetInstance<AdapterSystem>().Assets.Draw(sprite, Projectile.Center, Projectile.rotation, age, 1, out _);
+                importedDrawn |= ModContent.GetInstance<AdapterSystem>().Assets.Draw(sprite, Projectile.Center, Projectile.rotation, age, SpellVisuals.Scale, out _);
         void Draw(Color color, float rotation, float width, float height)
         {
             // MagicPixel is a texture, not necessarily a 1x1 bitmap. Normalize both
             // scale and origin so dimensions stay in world pixels at any rotation.
-            var quad = PixelQuad.Fit(pixel.Width, pixel.Height, width, height);
+            var quad = PixelQuad.Fit(pixel.Width, pixel.Height, width * SpellVisuals.Scale, height * SpellVisuals.Scale);
             Main.EntitySpriteDraw(pixel, center, pixel.Bounds, color, rotation,
                 new Vector2(quad.OriginX, quad.OriginY), new Vector2(quad.ScaleX, quad.ScaleY), SpriteEffects.None);
         }
