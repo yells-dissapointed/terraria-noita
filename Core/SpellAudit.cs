@@ -18,6 +18,7 @@ public sealed class SpellAuditCase
     public List<string> AlwaysCast { get; set; } = new();
     public SpellAuditStatus Status { get; set; }
     public string Error { get; set; } = "";
+    public string RuntimeVersion { get; set; } = "";
     public DemoInspection? Inspection { get; set; }
     public CastPlan? Plan { get; set; }
 }
@@ -57,15 +58,29 @@ public sealed class SpellAudit
     {
         if (Done) return false;
         int index = Report.Cases.Count, context = index % 3;
-        var result = new SpellAuditCase { Spell = ids[index / 3], Context = new[] { "Solo", "Followed by sparks", "Always cast" }[context] };
+        var result = RunCase(ids[index / 3], context, create, defaults, release);
+        Report.RuntimeVersion = result.RuntimeVersion;
+        Report.Cases.Add(result); Report.Complete = Done;
+        return true;
+    }
+    public static SpellAuditCase CreateCase(string spell, int context)
+    {
+        if (context is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(context));
+        var result = new SpellAuditCase { Spell = spell, Context = new[] { "Solo", "Followed by sparks", "Always cast" }[context] };
         if (context != 2) result.Deck.Add(result.Spell);
         if (context != 0) result.Deck.AddRange(Enumerable.Repeat("LIGHT_BULLET", 4));
         if (context == 2) result.AlwaysCast.Add(result.Spell);
+        return result;
+    }
+    public static SpellAuditCase RunCase(string spell, int context, Func<Lua51Runtime> create,
+        IReadOnlyDictionary<string, JsonElement> defaults, Action<Lua51Runtime>? dispose = null)
+    {
+        var result = CreateCase(spell, context);
         // Factory failures are infrastructure failures: stop, rather than falsely blame every spell.
         var runtime = create();
         try
         {
-            Report.RuntimeVersion = runtime.RuntimeVersion;
+            result.RuntimeVersion = runtime.RuntimeVersion;
             runtime.Configure(new(result.Deck.Select(id => new SpellSlot(id)).ToArray()));
             result.Plan = runtime.Cast(10000, result.AlwaysCast);
             result.Inspection = DemoCapabilities.Inspect(result.Plan, defaults);
@@ -74,8 +89,7 @@ public sealed class SpellAudit
                 result.Inspection.ProjectileCount == 0 ? SpellAuditStatus.NoProjectile : result.Inspection.Missing.Count > 0 ? SpellAuditStatus.DemoWithGaps : SpellAuditStatus.DemoCandidate;
         }
         catch (Exception e) { result.Status = SpellAuditStatus.ScriptError; result.Error = e.Message; }
-        finally { release(runtime); }
-        Report.Cases.Add(result); Report.Complete = Done;
-        return true;
+        finally { if (dispose != null) dispose(runtime); else runtime.Dispose(); }
+        return result;
     }
 }

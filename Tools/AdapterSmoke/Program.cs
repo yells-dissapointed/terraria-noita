@@ -263,6 +263,40 @@ using (var catalog = New())
     Check(parsed.RootElement.GetProperty("Complete").GetBoolean() && parsed.RootElement.GetProperty("Cases").GetArrayLength() == 15 &&
           parsed.RootElement.GetProperty("Limits").GetString()!.Contains("No collision"), "audit export retains every case and states coverage limits");
 }
+using (var catalogForScan = New())
+{
+    var ids = catalogForScan.SpellIds();
+    var scan = new SpellDebugSequence(ids); scan.SetMode(SpellDebugMode.AllContexts);
+    var seen = new HashSet<string>();
+    while (!scan.Complete)
+    {
+        var sample = scan.Current();
+        seen.Add(sample.Spell + "/" + sample.Context); scan.Advance();
+    }
+    Check(seen.Count == 1266 && scan.Index == 1266, "automatic debug scan visits all 422 spells in all three contexts without wrapping");
+    scan.Advance(); Check(scan.Index == 1266, "completed scan stays stopped");
+    scan.Move(-1); Check(scan.Current().Spell == ids[^1] && scan.ContextIndex == 2, "previous selects the final test after completion");
+    scan.SetMode(SpellDebugMode.FollowedBySparks);
+    Check(scan.Index == 0 && scan.Total == 422 && scan.Current().Deck.Count == 5 && scan.Current().AlwaysCast.Count == 0, "default debug context supplies follow-up sparks and resets cursor");
+    scan.Move(-100); Check(scan.Index == 0, "previous clamps at start");
+    scan.Move(10000); Check(scan.Index == 421, "next clamps to final valid case");
+    scan.SetMode(SpellDebugMode.AlwaysCast);
+    Check(scan.Current().AlwaysCast.Single() == ids[0] && scan.Current().Deck.All(id => id == "LIGHT_BULLET"), "always-cast debug recipe uses the selected spell and support sparks");
+    var neutral = catalogForScan.DefaultConfiguration();
+    int released = 0;
+    void ReleaseCase(Lua51Runtime r) { r.Dispose(); released++; }
+    var failedCase = SpellAudit.RunCase("DAMAGE_RANDOM", 1, New, neutral, ReleaseCase);
+    var nextCase = SpellAudit.RunCase("LIGHT_BULLET", 1, New, neutral, ReleaseCase);
+    Check(released == 2 && failedCase.Status == SpellAuditStatus.ScriptError && nextCase.Status == SpellAuditStatus.DemoWithGaps, "debug scan releases failed states and tests the next spell independently");
+    var liveTrace = new CastDiagnostics(); liveTrace.Begin("Debug spark", new WandDefinition(), 10000); liveTrace.Capture(nextCase.Plan!);
+    var liveReport = new SpellLiveReport(); liveReport.Add(new SpellLiveCase { Test = nextCase, Trace = liveTrace, RootProjectilesSpawned = 1 });
+    liveTrace.Event("Hit training target after initial cast");
+    using var liveJson = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "C:/mods/terrarianoita.tmod"));
+    var liveCase = liveJson.RootElement.GetProperty("cases")[0];
+    Check(liveCase.GetProperty("root_projectiles_spawned").GetInt32() == 1 &&
+          liveCase.GetProperty("trace").GetProperty("runtime_events")[0].GetString()!.Contains("training target") &&
+          liveJson.RootElement.GetProperty("loaded_mod_version").GetString() == "0.4.0", "live report includes later collision events, actual root spawn count and build identity");
+}
 Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
 if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 return 0;

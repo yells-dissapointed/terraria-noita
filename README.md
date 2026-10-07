@@ -26,7 +26,7 @@ Windows x64 and Linux x64 LuaJIT libraries are included. macOS requires building
 an appropriate native library; it has not been validated. See [Native/README.md](Native/README.md).
 The wand starts with its own 100 mana pool, displayed in its tooltip.
 
-## Editor and debugging (v0.3.0)
+## Editor and debugging (v0.4.0)
 
 Right-click while holding a wand. Changes are made to a draft until you click
 **Apply**. Choose spells from the palette to append slots; use the up/down buttons
@@ -58,6 +58,57 @@ or at the hand if a wall blocks that offset. Chainsaw is a visible stationary
 28×28 NPC damage area just in front of the muzzle, lasting at least the demo's
 base 8 frames before lifetime modifiers. It does not dig Terraria blocks or
 replicate Noita's terrain effects.
+
+## Separate live debugging wand (v0.4.0)
+
+Craft **Spell Debug Wand** with **one dirt block at a workbench**. It is a cyan
+variant of the wand. Left-click casts the selected test case and advances to the
+next spell. Right-click opens a compact scan panel with Previous/Next, Test
+current, Start/Stop auto, context, interval, Restart, Clear shots and Save report.
+Automatic mode waits 1, 2, 5 or 10 seconds between cases and stops after one scan.
+Switching away stops auto; opening inventory/chat pauses it. Auto is never
+restored from saved items or clones.
+
+The default context adds four spark bolts after the tested spell, so modifiers
+and trigger payloads have something to act on. Choose Solo, Always cast or All
+three contexts to inspect different behavior. Every case starts with a fresh
+non-shuffle deck, unlimited uses and 10000 test mana. The ordinary wand's mana
+and deck are unaffected. Supported entity trees emit real Terraria demo
+projectiles; unsupported trees and native API failures are logged and skipped.
+The scanner does not draw substitute effects for unported entities.
+
+Before each case, the tool removes its own previous projectiles and suppresses
+cleanup-triggered payloads. Longer lifetimes/timers may therefore be truncated
+by the chosen interval. Live JSON reports include attempted recipes, missing
+effects, actual root spawn counts, later collision/trigger events, the loaded
+mod version and its file path. Reports are saved under
+`<tModLoader save folder>/terrarianoita/debug/`. Auto completion saves after the
+last observation interval; Save report also works during or after a run.
+
+Both wand tooltips, the editor heading and the live debug HUD show the loaded
+version. **Loaded file** prints the exact active `.tmod` path in chat. The
+startup log also records version, build ID and loaded file. If the game still
+shows 0.2.0, it is not running this package. Close tModLoader, replace the package
+in the folder opened by **Mods → Open Mods Folder**, and restart. Building an
+older `ModSources` checkout later recreates its older package; update that
+checkout before using Build + Reload.
+
+## What is imported, and what still needs implementation
+
+The host imports the original Noita **wand/spell Lua** from local extracted
+files. It currently does not interpret the spell entities' XML component
+definitions, import their sprites/animations or run the native Noita engine.
+The projectile adapter implements only spark, blue spark and chainsaw paths,
+with prototype rendering and physics. Many modifier cards can act on those
+paths, which is why 190 spells have a drawable setup; this is not 190 distinct
+native effects.
+
+Broader coverage requires an entity/component compatibility layer: XML base
+inheritance, projectile data, sprite animation, movement, homing, explosions,
+statuses and missing native APIs, then material and terrain interactions.
+Loading more definitions alone cannot supply engine behavior. Most effects can
+be implemented in stages; exact Noita terrain/material behavior would require a
+substantial additional simulation inside Terraria.
 
 ## Automatic spell audit
 
@@ -113,10 +164,11 @@ complete action table does **not** establish that every spell is supported.
 - **Persistence/networking:** edited definitions and mana are saved with the item.
   The active Lua draw/discard position resets after loading, cloning or applying
   edits. Multiplayer is not implemented.
-- **Verification:** 92 original-script, path, editor serialization and diagnostic
-  checks pass in the standalone harness. Four additional checks against the
+- **Verification:** 101 original-script, path, editor serialization and diagnostic
+  checks pass in the standalone harness. Eight additional checks against the
   packaged mod verify real tModLoader item save/load, cloning, the chainsaw
-  damage hitbox and packaged sprite geometry. The mod builds and packages with tModLoader 2026.08.3.0 with zero
+  damage hitbox, packaged sprite geometry, build identity, debug-item persistence,
+  clone isolation and payload suppression during debug cleanup. The mod builds and packages with tModLoader 2026.08.3.0 with zero
   compilation errors or warnings. The user confirmed the previous runtime loads and fires on Windows. The new
   editor, hitboxes and graphics still need a graphical in-game playtest.
 

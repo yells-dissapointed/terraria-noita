@@ -1,4 +1,14 @@
 Items: {
+    SpellDebugWand: {
+        DisplayName: Spell Debug Wand
+        Tooltip:
+            '''
+            Left-click to test the next spell; right-click for scan controls
+            Automatic scan with fresh decks and full test mana
+            Unsupported effects are logged and skipped
+            Single-player development tool
+            '''
+    }
     NoitaWand: {
         DisplayName: Noita Wand
         Tooltip:

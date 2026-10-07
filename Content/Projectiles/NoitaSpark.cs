@@ -19,6 +19,12 @@ public sealed class NoitaSpark : ModProjectile
     private int age;
     private bool chainsaw, debugVisible;
     private Color sparkColor = Color.HotPink;
+    public CastDiagnostics? Diagnostics => trace;
+    public void CancelDebugPayloads()
+    {
+        triggers = null;
+        trace?.Event($"Debug cleanup #{Projectile.whoAmI}; remaining life {Projectile.timeLeft}. Payloads suppressed.");
+    }
     public void Configure(ProjectilePlan node, bool isChainsaw, Vector2 castDirection, CastDiagnostics? diagnostics, bool showHitbox)
     {
         triggers = new TriggerRunner(node.Triggers); chainsaw = isChainsaw;

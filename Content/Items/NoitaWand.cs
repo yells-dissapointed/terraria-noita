@@ -163,6 +163,7 @@ public class NoitaWand : ModItem
     }
     public override void ModifyTooltips(List<TooltipLine> tooltips)
     {
+        tooltips.Add(new TooltipLine(Mod, "LoadedVersion", BuildIdentity.Label(Mod)));
         tooltips.Add(new TooltipLine(Mod, "WandMana", $"Wand mana: {mana:0}/{Definition.ManaMax:0}"));
         tooltips.Add(new TooltipLine(Mod, "SpellDeck", string.Join(" → ", Definition.Deck)));
         if (Definition.AlwaysCast.Count > 0) tooltips.Add(new TooltipLine(Mod, "AlwaysCast", "Always cast: " + string.Join(", ", Definition.AlwaysCast)));

@@ -8,12 +8,17 @@ using System.Text;
 using Terraria;
 using Terraria.ModLoader;
 using terrarianoita.Core;
+using Microsoft.Xna.Framework;
 
 namespace terrarianoita.Common;
 
 public sealed class AdapterSystem : ModSystem
 {
     private readonly HashSet<Lua51Runtime> runtimes = new();
+    public override void OnWorldLoad()
+    {
+        if (!Main.dedServ) Main.NewText(BuildIdentity.Label(Mod), Color.LightPink);
+    }
     public Lua51Runtime CreateRuntime()
     {
         string root = ModContent.GetInstance<NoitaConfig>().ExtractedDataRoot;

@@ -1,0 +1,180 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.DataStructures;
+using Terraria.ID;
+using Terraria.ModLoader;
+using Terraria.ModLoader.IO;
+using terrarianoita.Common;
+using terrarianoita.Core;
+using terrarianoita.Content.Projectiles;
+
+namespace terrarianoita.Content.Items;
+
+public sealed class SpellDebugWand : ModItem
+{
+    public override string Texture => "terrarianoita/Content/Items/NoitaWand";
+    public override Color? GetAlpha(Color lightColor) => Color.Cyan;
+    public SpellDebugSequence? Sequence { get; private set; }
+    public SpellLiveReport Report { get; private set; } = new();
+    public CastDiagnostics? LastTrace { get; private set; }
+    public bool Automatic { get; private set; }
+    public int Interval { get; private set; } = 120;
+    public string Status { get; private set; } = "Left-click: test next spell. Right-click: scan controls.";
+    public SpellDebugMode Mode { get; private set; } = SpellDebugMode.FollowedBySparks;
+    private Dictionary<string, JsonElement>? defaults;
+    private int countdown, manualCooldown;
+    public override ModItem Clone(Item newEntity)
+    {
+        var clone = (SpellDebugWand)base.Clone(newEntity);
+        clone.Sequence = null; clone.Report = new(); clone.LastTrace = null; clone.defaults = null;
+        clone.Automatic = false; clone.countdown = clone.manualCooldown = 0;
+        return clone;
+    }
+    public override void SetDefaults()
+    {
+        Item.damage = 3; Item.DamageType = DamageClass.Magic; Item.width = Item.height = 40;
+        Item.useTime = Item.useAnimation = 15; Item.useStyle = ItemUseStyleID.Shoot;
+        Item.noMelee = true; Item.rare = ItemRarityID.Cyan; Item.autoReuse = false;
+        Item.shoot = ModContent.ProjectileType<NoitaSpark>(); Item.shootSpeed = 12;
+    }
+    public override bool AltFunctionUse(Player player) => true;
+    public override bool CanUseItem(Player player) => Main.netMode == NetmodeID.SinglePlayer && manualCooldown == 0 &&
+        !ModContent.GetInstance<SpellDebugSystem>().IsOpen && !ModContent.GetInstance<WandEditorSystem>().IsOpen;
+    public override bool? UseItem(Player player)
+    {
+        if (player.altFunctionUse == 2) ModContent.GetInstance<SpellDebugSystem>().Open(this);
+        return true;
+    }
+    public override bool Shoot(Player player, EntitySource_ItemUse_WithAmmo source, Vector2 position, Vector2 velocity, int type, int damage, float knockback)
+    {
+        if (player.altFunctionUse != 2) { Stop(); TestNext(player, source); }
+        return false;
+    }
+    private void Initialize()
+    {
+        if (Sequence != null) return;
+        var manager = ModContent.GetInstance<AdapterSystem>(); var runtime = manager.CreateRuntime();
+        try
+        {
+            defaults = runtime.DefaultConfiguration(); Sequence = new(runtime.SpellIds()); Sequence.SetMode(Mode);
+        }
+        finally { manager.Release(runtime); }
+    }
+    public void Stop() => Automatic = false;
+    public void ToggleAutomatic()
+    {
+        try
+        {
+            Initialize();
+            if (Sequence!.Complete) { Status = "Scan finished. Restart to scan again."; return; }
+            Automatic = !Automatic; countdown = Interval;
+            Status = Automatic ? "Auto scan starts after the interval. Aim the cursor; switching items stops it." : "Auto scan stopped.";
+        }
+        catch (Exception e) { Stop(); Status = e.Message; }
+    }
+    public void Move(int delta)
+    {
+        try { Stop(); Initialize(); Sequence!.Move(delta); Status = "Selected " + Sequence.Spell; }
+        catch (Exception e) { Status = e.Message; }
+    }
+    public void ChangeContext()
+    {
+        Stop(); Mode = (SpellDebugMode)(((int)Mode + 1) % 4); Sequence?.SetMode(Mode);
+        Status = "Context changed; scan restarted. Earlier results remain in the report.";
+    }
+    public void ChangeInterval() => Interval = Interval switch { 60 => 120, 120 => 300, 300 => 600, _ => 60 };
+    public void Restart()
+    {
+        Stop(); Sequence?.Restart(); Status = "Scan restarted; earlier results remain in the report.";
+    }
+    public void CleanupCurrent()
+    {
+        if (LastTrace == null) return;
+        foreach (var projectile in Main.projectile)
+        {
+            if (projectile is { active: true, ModProjectile: NoitaSpark spark } && ReferenceEquals(spark.Diagnostics, LastTrace))
+            { spark.CancelDebugPayloads(); projectile.Kill(); }
+        }
+    }
+    public void TestNext(Player player, IEntitySource? source = null, bool advance = true)
+    {
+        if (Main.netMode != NetmodeID.SinglePlayer || player.whoAmI != Main.myPlayer || player.dead) return;
+        try
+        {
+            Initialize();
+            if (Sequence!.Complete) { Stop(); Status = "All selected cases finished. Save report or Restart."; return; }
+            CleanupCurrent();
+            var manager = ModContent.GetInstance<AdapterSystem>();
+            var test = SpellAudit.RunCase(Sequence.Spell, Sequence.ContextIndex, manager.CreateRuntime, defaults!, manager.Release);
+            var trace = new CastDiagnostics(); LastTrace = trace;
+            var definition = new WandDefinition { Deck = test.Deck, AlwaysCast = test.AlwaysCast, ManaMax = 10000 };
+            trace.Begin($"Live debug: {test.Spell} / {test.Context}", definition, 10000);
+            var result = new SpellLiveCase { Test = test, Trace = trace }; Report.Add(result);
+            if (test.Plan != null) trace.Capture(test.Plan);
+            foreach (string missing in test.Inspection?.Missing ?? new List<string>()) trace.Event("NOT IMPLEMENTED: " + missing);
+            if (test.Status is SpellAuditStatus.Unsupported or SpellAuditStatus.ScriptError or SpellAuditStatus.NotExercised)
+            {
+                trace.Fail(test.Error.Length > 0 ? test.Error : "No live emission: unsupported entity tree or unexercised action.");
+                Status = $"Skipped {test.Spell}: {test.Status}. Full reason is in the report.";
+            }
+            else
+            {
+                DemoProjectileAdapter.Validate(test.Plan!.Root);
+                Vector2 hand = player.RotatedRelativePoint(player.MountedCenter), aim = Main.MouseWorld - hand;
+                if (aim.LengthSquared() < .001f) aim = new Vector2(player.direction, 0);
+                aim.Normalize(); Vector2 muzzle = hand + aim * 16;
+                if (!Collision.CanHitLine(hand, 1, 1, muzzle, 1, 1)) muzzle = hand;
+                result.RootProjectilesSpawned = DemoProjectileAdapter.Emit(test.Plan.Root, source ?? player.GetSource_ItemUse(Item), player, muzzle, aim, trace, true);
+                trace.Event($"Debug cast: {result.RootProjectilesSpawned} root projectile(s). Gaps: {test.Inspection!.Missing.Count}. Native fidelity unverified.");
+                Status = $"Tested {test.Spell}: {result.RootProjectilesSpawned} root(s), {test.Inspection.Missing.Count} missing effect field(s).";
+            }
+            if (advance) Sequence.Advance();
+            countdown = Interval; manualCooldown = 15;
+        }
+        catch (Exception e) { Stop(); Status = "Debug test stopped: " + e.Message; LastTrace?.Fail(e.Message); }
+    }
+    public string SaveReport()
+    {
+        string directory = Path.Combine(Main.SavePath, "terrarianoita", "debug"); Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "live-spell-debug-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + ".json");
+        File.WriteAllText(path, Report.Json(Mod.Version.ToString(), BuildIdentity.LoadedPath(Mod))); return path;
+    }
+    public override void HoldItem(Player player)
+    {
+        if (!Automatic || player.whoAmI != Main.myPlayer || Main.netMode != NetmodeID.SinglePlayer || player.dead || Main.gameMenu) return;
+        if (Main.playerInventory || Main.drawingPlayerChat || Main.gamePaused) return;
+        if (--countdown > 0) return;
+        if (Sequence?.Complete == true)
+        {
+            Stop(); CleanupCurrent();
+            try { string path = SaveReport(); Main.NewText("Spell scan finished: " + path, Color.Cyan); Status = "Scan complete; report saved. Path printed in chat."; }
+            catch (Exception e) { Status = "Scan complete; report save failed: " + e.Message; }
+            return;
+        }
+        TestNext(player);
+    }
+    public override void UpdateInventory(Player player)
+    {
+        if (manualCooldown > 0) manualCooldown--;
+        if (player.dead || !ReferenceEquals(player.HeldItem.ModItem, this)) Stop();
+    }
+    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; }
+    public override void LoadData(TagCompound tag)
+    {
+        int mode = tag.GetInt("mode"); Mode = Enum.IsDefined(typeof(SpellDebugMode), mode) ? (SpellDebugMode)mode : SpellDebugMode.FollowedBySparks;
+        int interval = tag.GetInt("interval"); Interval = interval is 60 or 120 or 300 or 600 ? interval : 120;
+        Stop(); Sequence = null; defaults = null; Report = new(); LastTrace = null;
+    }
+    public override void ModifyTooltips(List<TooltipLine> tooltips)
+    {
+        tooltips.Add(new TooltipLine(Mod, "LoadedVersion", BuildIdentity.Label(Mod)));
+        tooltips.Add(new TooltipLine(Mod, "DebugUse", "Left-click tests the next spell; right-click opens automatic scan controls"));
+        tooltips.Add(new TooltipLine(Mod, "DebugLimits", "Fresh decks and full test mana; unsupported entities are logged and skipped"));
+    }
+    public override void AddRecipes() => CreateRecipe().AddIngredient(ItemID.DirtBlock).AddTile(TileID.WorkBenches).Register();
+}

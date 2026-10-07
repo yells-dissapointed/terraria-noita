@@ -12,7 +12,7 @@ using var file = File.OpenRead(args[0]);
 using var reader = new BinaryReader(file);
 if (new string(reader.ReadChars(4)) != "TMOD") throw new Exception("Invalid mod package");
 reader.ReadString(); reader.ReadBytes(276); reader.ReadInt32();
-string modName = reader.ReadString(); reader.ReadString();
+string modName = reader.ReadString(), packageVersion = reader.ReadString();
 int count = reader.ReadInt32(), offset = 0;
 var table = new List<(string name, int size, int stored, int offset)>();
 for (int i = 0; i < count; i++) { string name = reader.ReadString(); int size = reader.ReadInt32(), stored = reader.ReadInt32(); table.Add((name, size, stored, offset)); offset += stored; }
@@ -29,6 +29,9 @@ var paths = Directory.GetFiles(root, "*.dll", SearchOption.AllDirectories)
     .GroupBy(Path.GetFileNameWithoutExtension).ToDictionary(g => g.Key!, g => g.First());
 context.Resolving += (_, name) => paths.TryGetValue(name.Name!, out var path) ? context.LoadFromAssemblyPath(path) : null;
 var mod = context.LoadFromStream(new MemoryStream(bytes));
+var stamp = mod.GetType("terrarianoita.Core.BuildStamp")!;
+if (packageVersion != (string)stamp.GetField("Version")!.GetRawConstantValue()!) throw new Exception("Package version differs from compiled build stamp");
+Console.WriteLine("PASS: package version matches compiled build identity: " + packageVersion);
 var wt = mod.GetType("terrarianoita.Content.Items.NoitaWand")!;
 var dt = mod.GetType("terrarianoita.Core.WandDefinition")!;
 var tagType = wt.GetMethod("SaveData")!.GetParameters()[0].ParameterType;
@@ -79,4 +82,29 @@ foreach (var texture in new[] { (1, 1), (2, 2), (20, 20), (256, 32) })
         throw new Exception("Packaged sprite geometry depends on texture size");
 }
 Console.WriteLine("PASS: packaged draw geometry preserves a centered 12x8 spark across four texture dimensions");
+var debugType = mod.GetType("terrarianoita.Content.Items.SpellDebugWand")!;
+object debugWand = Activator.CreateInstance(debugType)!;
+debugType.GetMethod("ChangeContext")!.Invoke(debugWand, null);
+debugType.GetMethod("ChangeInterval")!.Invoke(debugWand, null);
+object debugTag = Activator.CreateInstance(tagType)!; debugType.GetMethod("SaveData")!.Invoke(debugWand, new[] { debugTag });
+object debugRestored = Activator.CreateInstance(debugType)!; debugType.GetMethod("LoadData")!.Invoke(debugRestored, new[] { debugTag });
+if ((int)debugType.GetProperty("Interval")!.GetValue(debugRestored)! != 300 ||
+    debugType.GetProperty("Mode")!.GetValue(debugRestored)!.ToString() != "Solo" ||
+    (bool)debugType.GetProperty("Automatic")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
+Console.WriteLine("PASS: debug wand saves its interval/context and loads with auto firing stopped");
+object debugReport = debugType.GetProperty("Report")!.GetValue(debugWand)!;
+var liveCases = (System.Collections.IList)debugReport.GetType().GetProperty("Cases")!.GetValue(debugReport)!;
+liveCases.Add(Activator.CreateInstance(mod.GetType("terrarianoita.Core.SpellLiveCase")!)!);
+object debugClone = debugType.GetMethod("Clone")!.Invoke(debugWand, new[] { Activator.CreateInstance(itemType)! })!;
+object cloneReport = debugType.GetProperty("Report")!.GetValue(debugClone)!;
+if (ReferenceEquals(cloneReport, debugReport) || ((System.Collections.IList)cloneReport.GetType().GetProperty("Cases")!.GetValue(cloneReport)!).Count != 0 ||
+    (bool)debugType.GetProperty("Automatic")!.GetValue(debugClone)!) throw new Exception("Cloned debug wand shares a live scan/report");
+Console.WriteLine("PASS: cloned debug wand starts with an independent empty scan and report");
+var triggerType = mod.GetType("terrarianoita.Core.TriggerPlan")!;
+object deathTrigger = Activator.CreateInstance(triggerType)!; triggerType.GetProperty("Kind")!.SetValue(deathTrigger, "death");
+((System.Collections.IList)parameters[0].ParameterType.GetProperty("Triggers")!.GetValue(node)!).Add(deathTrigger);
+method.Invoke(spark, new object?[] { node, true, direction, null, false });
+sparkType.GetMethod("CancelDebugPayloads")!.Invoke(spark, null);
+if (sparkType.GetField("triggers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(spark) != null) throw new Exception("Debug cleanup can fire a death payload");
+Console.WriteLine("PASS: debug cleanup detaches death/impact/timer payloads before projectile removal");
 return 0;

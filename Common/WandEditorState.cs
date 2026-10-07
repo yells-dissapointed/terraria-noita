@@ -54,7 +54,7 @@ public sealed class WandEditorState : UIState
     {
         panel = new UIPanel { HAlign = .5f, VAlign = .5f, BackgroundColor = new Color(25, 28, 45) };
         panel.Width.Set(0, .92f); panel.Height.Set(0, .82f); panel.SetPadding(12); Append(panel);
-        Label(panel, "Noita wand editor — non-shuffle prototype", 0, 2);
+        Label(panel, $"Noita wand editor | v{Wand.Mod.Version}", 0, 2);
         var closeButton = Button(panel, "Close", close, -72, 0, 72); closeButton.Left.Set(-72, 1);
         Label(panel, "Edit a draft, test it, then Apply. Switching items closes this window.", 0, 28);
         Stat(0, "Delay", () => draft.CastDelay, v => draft.CastDelay = v, 1, 0, 600, "f");

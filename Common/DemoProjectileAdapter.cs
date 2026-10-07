@@ -21,11 +21,12 @@ public static class DemoProjectileAdapter
             foreach (var trigger in node.Triggers) Validate(trigger.Payload);
         }
     }
-    public static void Emit(ShotPlan shot, IEntitySource source, Player player, Vector2 position, Vector2 direction,
+    public static int Emit(ShotPlan shot, IEntitySource source, Player player, Vector2 position, Vector2 direction,
         CastDiagnostics? trace = null, bool debugVisible = false)
     {
         if (direction.LengthSquared() < 0.001f) direction = Vector2.UnitX;
         direction.Normalize();
+        int spawned = 0;
         foreach (var node in shot.Projectiles)
         {
             bool chainsaw = node.Entity == DemoCapabilities.Chainsaw;
@@ -43,7 +44,9 @@ public static class DemoProjectileAdapter
             var projectile = Main.projectile[id];
             projectile.timeLeft = Math.Clamp((chainsaw ? 8 : 40) + (int)shot.Number("lifetime_add"), 1, 3600);
             ((NoitaSpark)projectile.ModProjectile).Configure(node, chainsaw, direction, trace, debugVisible);
+            spawned++;
             trace?.Event($"Spawn {System.IO.Path.GetFileName(node.Entity)} #{id}, damage {damage}, life {projectile.timeLeft} frames");
         }
+        return spawned;
     }
 }
