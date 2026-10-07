@@ -14,7 +14,7 @@ public sealed class SpellDebugState : UIState
     private readonly Action close;
     private UIPanel panel = null!;
     private UIText cursor = null!, status = null!, detail = null!;
-    private UITextPanel<string> auto = null!, context = null!, interval = null!, visualization = null!;
+    private UITextPanel<string> auto = null!, context = null!, interval = null!, visualization = null!, fixedSpell = null!;
     public SpellDebugState(SpellDebugWand wand, Action closePanel) { Wand = wand; close = closePanel; }
     private static void Place(UIElement e, float x, float y, float width, float height)
     {
@@ -48,14 +48,15 @@ public sealed class SpellDebugState : UIState
             catch (Exception e) { Main.NewText(e.Message, Color.OrangeRed); }
         }, 326, 154, 106);
         Button("Clear shots", Wand.CleanupCurrent, 438, 154, 104);
-        Label("Fresh deck, unlimited uses and 10000 mana for each isolated test.", 198);
+        fixedSpell = Button("", Wand.ToggleFixedSpell, 0, 190, 250);
         Label("Auto stops at the end. Switching items stops; inventory/chat pauses.", 220);
         Label("Orange: emitted entity marker. Cyan card: no target projectile claimed.", 242);
         visualization = Button("", Wand.ChangeVisualization, 0, 272, 320);
         Button("Loaded file", () => Main.NewText(BuildIdentity.LoadedPath(Wand.Mod), Color.Cyan), 438, 272, 104);
-        Label("XML preview imports sprites/physics; native effects remain deferred.", 312);
-        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error" };
-        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM" };
+        Label("Live integration can damage enemies/terrain. XML preview is harmless.", 312);
+        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error", "Arrow", "Magic arrow", "Rocket" };
+        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM", "ARROW", "BULLET", "ROCKET" };
+        panel.Height.Set(480, 0);
         for (int i = 0; i < ids.Length; i++)
         {
             string spell = ids[i]; Button(names[i], () => Wand.Select(spell), i % 4 * 140, 342 + i / 4 * 34, 132);
@@ -66,14 +67,15 @@ public sealed class SpellDebugState : UIState
         if (panel.ContainsPoint(Main.MouseScreen)) Main.LocalPlayer.mouseInterface = true;
         var sequence = Wand.Sequence;
         cursor.SetText(sequence == null ? "Catalog loads on the first test" : sequence.Complete ? "Scan finished; Restart to run again" :
-            $"Next {sequence.Index + 1}/{sequence.Total}: {sequence.Spell}");
+            $"{(Wand.FixedSpell ? "Fixed" : "Next")} {sequence.Index + 1}/{sequence.Total}: {sequence.Spell}");
         string message = Wand.Status;
         status.SetText(message.Length > 85 ? message[..85] : message);
         detail.SetText(message.Length > 85 ? message.Substring(85, Math.Min(85, message.Length - 85)) : $"Recorded live tests: {Wand.Report.Cases.Count}");
         auto.SetText(Wand.Automatic ? "Stop auto" : "Start auto");
         context.SetText(Wand.Mode switch { Core.SpellDebugMode.Solo => "Context: Solo", Core.SpellDebugMode.AlwaysCast => "Context: Always cast", Core.SpellDebugMode.AllContexts => "Context: All three", _ => "Context: With sparks" });
         interval.SetText($"Interval: {Wand.Interval / 60f:0.#} seconds");
-        visualization.SetText(Wand.VisualPreview ? "Mode: XML/sprite preview (harmless)" : "Mode: gameplay demo (3 entities)");
+        visualization.SetText(Wand.VisualPreview ? "Mode: XML/sprite preview (harmless)" : "Mode: Terraria integration (live)");
+        fixedSpell.SetText(Wand.FixedSpell ? "Selection: Fixed spell" : "Selection: Cycle spells");
         base.Update(gameTime);
     }
 }

@@ -17,7 +17,7 @@ namespace terrarianoita.Common;
 public sealed class WandEditorState : UIState
 {
     private static readonly string[] DemoSpells = {
-        "LIGHT_BULLET", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TRIGGER_2", "LIGHT_BULLET_TIMER", "CHAINSAW",
+        "LIGHT_BULLET", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TRIGGER_2", "LIGHT_BULLET_TIMER", "CHAINSAW", "BOMB", "ARROW", "BULLET", "HEAVY_BULLET", "SLOW_BULLET", "ROCKET",
         "BURST_2", "BURST_3", "BURST_4", "DAMAGE", "MANA_REDUCE", "RECHARGE", "SPREAD_REDUCE",
         "SPEED", "LIFETIME", "LIFETIME_DOWN", "ADD_TRIGGER", "ADD_TIMER", "ADD_DEATH_TRIGGER", "GAMMA"
     };

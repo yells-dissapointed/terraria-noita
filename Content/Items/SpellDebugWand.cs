@@ -27,6 +27,7 @@ public sealed class SpellDebugWand : ModItem
     public string Status { get; private set; } = "Left-click: test next spell. Right-click: scan controls.";
     public SpellDebugMode Mode { get; private set; } = SpellDebugMode.FollowedBySparks;
     public bool VisualPreview { get; private set; } = true;
+    public bool FixedSpell { get; private set; }
     private Dictionary<string, JsonElement>? defaults;
     private Dictionary<string, SpellCard>? cards;
     private int countdown, manualCooldown;
@@ -76,7 +77,7 @@ public sealed class SpellDebugWand : ModItem
             Initialize();
             if (Sequence!.Complete) { Status = "Scan finished. Restart to scan again."; return; }
             Automatic = !Automatic; countdown = Interval;
-            Status = Automatic ? "Auto scan starts after the interval. Aim the cursor; switching items stops it." : "Auto scan stopped.";
+            Status = Automatic ? (FixedSpell ? "Auto repeats this spell/context until stopped; aim the cursor." : "Auto scan starts after the interval. Aim the cursor; switching items stops it.") : "Auto scan stopped.";
         }
         catch (Exception e) { Stop(); Status = e.Message; }
     }
@@ -96,10 +97,16 @@ public sealed class SpellDebugWand : ModItem
         Status = "Context changed; scan restarted. Earlier results remain in the report.";
     }
     public void ChangeInterval() => Interval = Interval switch { 60 => 120, 120 => 300, 300 => 600, _ => 60 };
+    public void ToggleFixedSpell()
+    {
+        Stop(); FixedSpell = !FixedSpell;
+        if (FixedSpell && Sequence?.Complete == true) Sequence.Move(-1);
+        Status = FixedSpell ? "Fixed spell: left-click and auto repeat the selected spell/context. Previous/Next still select manually." : "Cycle spells: each test advances to the next case.";
+    }
     public void ChangeVisualization()
     {
         Stop(); CleanupCurrent(); VisualPreview = !VisualPreview;
-        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Gameplay demo: only sparks and chainsaw are supported; shots can deal damage.";
+        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Terraria integration: mapped spells deal damage; Bomb uses a real terrain explosion. Unmapped spells stay visual.";
     }
     public void Restart()
     {
@@ -114,6 +121,8 @@ public sealed class SpellDebugWand : ModItem
             { spark.CancelDebugPayloads(); projectile.Kill(); }
             else if (projectile is { active: true, ModProjectile: NoitaVisualProjectile visual } && ReferenceEquals(visual.Diagnostics, LastTrace))
             { visual.CancelDebugPayloads(); projectile.Kill(); }
+            else if (projectile is { active: true } && projectile.TryGetGlobalProjectile<TerrariaProjectileBinding>(out var binding) &&
+                binding.Bound && ReferenceEquals(binding.Diagnostics, LastTrace)) binding.RemoveForDebug(projectile);
         }
     }
     public void TestNext(Player player, IEntitySource? source = null, bool advance = true)
@@ -129,9 +138,10 @@ public sealed class SpellDebugWand : ModItem
             var trace = new CastDiagnostics(); LastTrace = trace;
             var definition = new WandDefinition { Deck = test.Deck, AlwaysCast = test.AlwaysCast, ManaMax = 10000 };
             trace.Begin($"Live debug: {test.Spell} / {test.Context}", definition, 10000);
-            var result = new SpellLiveCase { Test = test, Trace = trace, VisualPreview = VisualPreview }; Report.Add(result);
+            var result = new SpellLiveCase { Test = test, Trace = trace, VisualPreview = VisualPreview, FixedSpell = FixedSpell }; Report.Add(result);
             if (test.Plan != null) trace.Capture(test.Plan);
-            foreach (string missing in test.Inspection?.Missing ?? new List<string>()) trace.Event("NOT IMPLEMENTED: " + missing);
+            foreach (string missing in test.Inspection?.Missing ?? new List<string>())
+                trace.Event(VisualPreview ? "NOT IMPLEMENTED: " + missing : GameplayProjectileAdapter.DescribeGap(missing));
             Vector2 hand = player.RotatedRelativePoint(player.MountedCenter), aim = Main.MouseWorld - hand;
             if (aim.LengthSquared() < .001f) aim = new Vector2(player.direction, 0);
             aim.Normalize(); Vector2 muzzle = hand + aim * 16;
@@ -152,19 +162,18 @@ public sealed class SpellDebugWand : ModItem
                 trace.Event($"XML visual test: {result.RootProjectilesSpawned} emitted root entities; {result.DiagnosticCardsSpawned} diagnostic cards. Audit status {test.Status} remains unchanged.");
                 Status = $"{test.Spell}: {result.RootProjectilesSpawned} visual root(s), {result.DiagnosticCardsSpawned} card(s); {test.Status}.";
             }
-            else if (test.Status is SpellAuditStatus.Unsupported or SpellAuditStatus.ScriptError or SpellAuditStatus.NotExercised)
+            else if (test.Status is SpellAuditStatus.ScriptError or SpellAuditStatus.NotExercised)
             {
                 trace.Fail(test.Error.Length > 0 ? test.Error : "No live emission: unsupported entity tree or unexercised action.");
                 Status = $"Skipped {test.Spell}: {test.Status}. Full reason is in the report.";
             }
             else
             {
-                DemoProjectileAdapter.Validate(test.Plan!.Root);
-                result.RootProjectilesSpawned = DemoProjectileAdapter.Emit(test.Plan.Root, castSource, player, muzzle, aim, trace, true);
-                trace.Event($"Debug cast: {result.RootProjectilesSpawned} root projectile(s). Gaps: {test.Inspection!.Missing.Count}. Native fidelity unverified.");
-                Status = $"Tested {test.Spell}: {result.RootProjectilesSpawned} root(s), {test.Inspection.Missing.Count} missing effect field(s).";
+                result.RootProjectilesSpawned = GameplayProjectileAdapter.Emit(test.Plan!.Root, castSource, player, muzzle, aim, trace, true, result);
+                trace.Event($"Terraria integration: {result.RootProjectilesSpawned} root(s); unmapped entities use harmless Noita visuals. Legacy audit status {test.Status} is unchanged.");
+                Status = $"Tested {test.Spell}: {result.RootProjectilesSpawned} root(s); Terraria adapters or Noita visual fallback.";
             }
-            if (advance) Sequence.Advance();
+            if (advance) Sequence.Advance(FixedSpell);
             countdown = Interval; manualCooldown = 15;
         }
         catch (Exception e) { Stop(); Status = "Debug test stopped: " + e.Message; LastTrace?.Fail(e.Message); }
@@ -194,18 +203,19 @@ public sealed class SpellDebugWand : ModItem
         if (manualCooldown > 0) manualCooldown--;
         if (player.dead || !ReferenceEquals(player.HeldItem.ModItem, this)) Stop();
     }
-    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); }
+    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); tag["fixedSpell"] = (byte)(FixedSpell ? 1 : 0); }
     public override void LoadData(TagCompound tag)
     {
         int mode = tag.GetInt("mode"); Mode = Enum.IsDefined(typeof(SpellDebugMode), mode) ? (SpellDebugMode)mode : SpellDebugMode.FollowedBySparks;
         int interval = tag.GetInt("interval"); Interval = interval is 60 or 120 or 300 or 600 ? interval : 120;
         VisualPreview = !tag.ContainsKey("visualPreview") || tag.GetByte("visualPreview") != 0;
+        FixedSpell = tag.ContainsKey("fixedSpell") && tag.GetByte("fixedSpell") != 0;
         Stop(); Sequence = null; defaults = null; cards = null; Report = new(); LastTrace = null;
     }
     public override void ModifyTooltips(List<TooltipLine> tooltips)
     {
         tooltips.Add(new TooltipLine(Mod, "LoadedVersion", BuildIdentity.Label(Mod)));
-        tooltips.Add(new TooltipLine(Mod, "DebugUse", "Left-click tests the next spell; right-click opens automatic scan controls"));
+        tooltips.Add(new TooltipLine(Mod, "DebugUse", FixedSpell ? "Left-click repeats the fixed spell; right-click for controls" : "Left-click tests the next spell; right-click for fixed/cycle controls"));
         tooltips.Add(new TooltipLine(Mod, "DebugLimits", "XML/sprite preview is harmless; orange entity markers and cyan diagnostic cards label gaps"));
     }
     public override void AddRecipes() => CreateRecipe().AddIngredient(ItemID.DirtBlock).AddTile(TileID.WorkBenches).Register();

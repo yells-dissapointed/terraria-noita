@@ -22,7 +22,7 @@ public sealed class SpellDebugSequence
         ids = spellIds.ToArray();
     }
     public SpellAuditCase Current() => !Complete ? SpellAudit.CreateCase(Spell, ContextIndex) : throw new InvalidOperationException("Spell scan complete; restart to run again.");
-    public void Advance() { if (!Complete) Index++; }
+    public void Advance(bool holdSpell = false) { if (!holdSpell && !Complete) Index++; }
     public void Move(int delta) => Index = Math.Clamp(Index + delta, 0, Total - 1);
     public void Restart() => Index = 0;
     public void Select(string spell)

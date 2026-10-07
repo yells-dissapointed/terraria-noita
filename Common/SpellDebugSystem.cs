@@ -46,9 +46,9 @@ public sealed class SpellDebugSystem : ModSystem
             {
                 var sequence = wand.Sequence;
                 string next = sequence == null ? "Catalog loads on first test" : sequence.Complete ? "Scan finished" :
-                    $"Next {sequence.Index + 1}/{sequence.Total}: {sequence.Spell} / {sequence.Current().Context}";
+                    $"{(wand.FixedSpell ? "Fixed" : "Next")} {sequence.Index + 1}/{sequence.Total}: {sequence.Spell} / {sequence.Current().Context}";
                 string text = BuildIdentity.Label(Mod) + "\nSpell debug wand | " + (wand.Automatic ? "AUTO" : "MANUAL") + " | " + next +
-                    "\nLeft: test next | Right: controls\n" + wand.Status;
+                    (wand.FixedSpell ? "\nLeft: repeat fixed spell | Right: controls\n" : "\nLeft: test next | Right: controls\n") + wand.Status;
                 if (wand.LastTrace is { Lines.Count: > 0 } trace) text += "\n" + trace.Lines[^1];
                 Utils.DrawBorderString(Main.spriteBatch, text, new Vector2(20, 100), Color.Cyan, .65f);
             }

@@ -88,13 +88,15 @@ if (!(bool)debugType.GetProperty("VisualPreview")!.GetValue(debugWand)!) throw n
 debugType.GetMethod("ChangeVisualization")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeContext")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeInterval")!.Invoke(debugWand, null);
+debugType.GetMethod("ToggleFixedSpell")!.Invoke(debugWand, null);
 object debugTag = Activator.CreateInstance(tagType)!; debugType.GetMethod("SaveData")!.Invoke(debugWand, new[] { debugTag });
 object debugRestored = Activator.CreateInstance(debugType)!; debugType.GetMethod("LoadData")!.Invoke(debugRestored, new[] { debugTag });
 if ((int)debugType.GetProperty("Interval")!.GetValue(debugRestored)! != 300 ||
     debugType.GetProperty("Mode")!.GetValue(debugRestored)!.ToString() != "Solo" ||
     (bool)debugType.GetProperty("Automatic")!.GetValue(debugRestored)! ||
-    (bool)debugType.GetProperty("VisualPreview")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
-Console.WriteLine("PASS: debug wand defaults to harmless preview, saves its controls and loads with auto firing stopped");
+    (bool)debugType.GetProperty("VisualPreview")!.GetValue(debugRestored)! ||
+    !(bool)debugType.GetProperty("FixedSpell")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
+Console.WriteLine("PASS: debug wand defaults to harmless preview, saves fixed/cycle controls and loads with auto firing stopped");
 object debugReport = debugType.GetProperty("Report")!.GetValue(debugWand)!;
 var liveCases = (System.Collections.IList)debugReport.GetType().GetProperty("Cases")!.GetValue(debugReport)!;
 liveCases.Add(Activator.CreateInstance(mod.GetType("terrarianoita.Core.SpellLiveCase")!)!);
@@ -125,4 +127,47 @@ visualType.GetMethod("Configure")!.Invoke(visual, new[] { node, visualProfile, d
 visualType.GetMethod("CancelDebugPayloads")!.Invoke(visual, null);
 if (visualType.GetField("triggers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(visual) != null) throw new Exception("Visual cleanup retains payloads");
 Console.WriteLine("PASS: cleanup of imported entities suppresses payloads independently of gameplay demo");
+var nativeType = mod.GetType("terrarianoita.Common.TerrariaProjectileBinding")!;
+object native = Activator.CreateInstance(nativeType)!;
+object nativeProjectile = Activator.CreateInstance(entity.PropertyType)!;
+ptype.GetField("active")!.SetValue(nativeProjectile, true); ptype.GetField("damage")!.SetValue(nativeProjectile, 125);
+nativeType.GetMethod("Configure")!.Invoke(native, new object?[] { nativeProjectile, node, direction, null, liveCase, visualEvidence, visualProfile, false, true });
+ptype.GetField("damage")!.SetValue(nativeProjectile, 100);
+nativeType.GetMethod("PrepareBombToBlow")!.Invoke(native, new[] { nativeProjectile });
+if ((int)ptype.GetField("damage")!.GetValue(nativeProjectile)! != 125) throw new Exception("Native bomb preparation loses mapped Noita damage");
+Console.WriteLine("PASS: native explosion preparation preserves mapped spell damage");
+nativeType.GetMethod("RemoveForDebug")!.Invoke(native, new[] { nativeProjectile });
+if ((bool)ptype.GetField("active")!.GetValue(nativeProjectile)! || (int)ptype.GetField("damage")!.GetValue(nativeProjectile)! != 0 ||
+    (bool)nativeType.GetProperty("Bound")!.GetValue(native)! || nativeType.GetField("triggers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(native) != null)
+    throw new Exception("Native cleanup leaves a damaging projectile or payload attached");
+Console.WriteLine("PASS: native debug cleanup deactivates the bound test without explosion/payload callbacks");
+var gameplay = mod.GetType("terrarianoita.Common.GameplayProjectileAdapter")!;
+var prototype = mod.GetType("terrarianoita.Core.TerrariaSpellPrototype")!;
+foreach (var sample in new[] { ("Bomb", 28), ("Arrow", 1), ("Bullet", 14), ("Rocket", 134) })
+    if ((int)gameplay.GetMethod("VanillaType")!.Invoke(null, new[] { Enum.Parse(prototype, sample.Item1) })! != sample.Item2) throw new Exception("Terraria adapter resolves to wrong projectile");
+Console.WriteLine("PASS: packaged adapters resolve the actual Bomb, friendly Arrow, Bullet and RocketI IDs");
+object unbound = Activator.CreateInstance(nativeType)!;
+ptype.GetField("damage")!.SetValue(nativeProjectile, 77);
+nativeType.GetMethod("PrepareBombToBlow")!.Invoke(unbound, new[] { nativeProjectile });
+object light = Activator.CreateInstance(mod.GetType("terrarianoita.Content.Projectiles.NoitaVisualProjectile")!.GetMethod("PreDraw")!.GetParameters()[0].ParameterType.GetElementType()!)!;
+if ((int)ptype.GetField("damage")!.GetValue(nativeProjectile)! != 77 || !(bool)nativeType.GetMethod("PreDraw")!.Invoke(unbound, new[] { nativeProjectile, light })!)
+    throw new Exception("Unbound vanilla projectile is affected by Noita hooks");
+Console.WriteLine("PASS: unbound vanilla projectiles keep their original damage and rendering");
+var shotType = mod.GetType("terrarianoita.Core.ShotPlan")!;
+object nativeTree = Activator.CreateInstance(shotType)!;
+object bombNode = Activator.CreateInstance(parameters[0].ParameterType)!;
+parameters[0].ParameterType.GetProperty("Entity")!.SetValue(bombNode, "data/entities/projectiles/bomb.xml");
+((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(nativeTree)!).Add(bombNode);
+gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree });
+object unsupported = Activator.CreateInstance(parameters[0].ParameterType)!;
+parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/black_hole.xml");
+object nested = Activator.CreateInstance(triggerType)!;
+object payload = triggerType.GetProperty("Payload")!.GetValue(nested)!;
+((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(payload)!).Add(unsupported);
+((System.Collections.IList)parameters[0].ParameterType.GetProperty("Triggers")!.GetValue(bombNode)!).Add(nested);
+bool rejectedTree = false;
+try { gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree }); }
+catch (TargetInvocationException e) when (e.InnerException is NotSupportedException) { rejectedTree = true; }
+if (!rejectedTree) throw new Exception("Ordinary wand can partially emit a tree containing unsupported native payloads");
+Console.WriteLine("PASS: ordinary gameplay accepts mapped Bomb but rejects an unsupported nested payload before emission");
 return 0;

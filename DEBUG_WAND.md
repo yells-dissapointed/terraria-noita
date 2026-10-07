@@ -1,4 +1,4 @@
-# Spell Debug Wand v0.5.1
+# Spell Debug Wand v0.6.0
 
 Spell sprites, orange entity markers and fallback spark/chainsaw visuals now
 draw at **1.75×** their previous size, around the same origin. Damage, collision
@@ -19,10 +19,69 @@ and advances; right-click opens controls. The default is **XML/sprite preview
 hole or Lua error. Select a preset, close the panel and left-click while aiming.
 Test current repeats a selection without advancing.
 
-## Five useful in-game tests
 
-1. **Version and basic rendering:** verify the tooltip/HUD says v0.5.1, build
-   `spell-visual-scale-175`. Use Spark in Solo context. Aim horizontally, vertically
+## Fixed selection and Terraria integration
+
+Right-click the Spell Debug Wand and choose **Selection: Fixed spell**. Left-click
+and auto now repeat the same spell **and context**. Previous/Next and presets
+still change the selection manually. Choose Cycle spells to resume the finite
+scan. Fixed auto repeats until you stop it or switch items; Save report is manual.
+The fixed/cycle preference is saved with the item; scan position resets on reload.
+
+**Mode: Terraria integration (live)** replaces the older three-entity gameplay
+mode. It reuses actual vanilla projectile types for these exact Noita entities:
+
+| Noita spell family | Terraria behavior | Artwork |
+| --- | --- | --- |
+| Bomb | Bomb: fuse, bounce, blast and tile explosion | Terraria Bomb |
+| Arrow | WoodenArrowFriendly: flight and hit/collision | Terraria Arrow |
+| Magic arrow, Magic bolt, Magic sphere (BULLET / HEAVY_BULLET / SLOW_BULLET), with trigger/timer variants | Bullet: flight and hit/collision | Original Noita sprites |
+| Rocket | RocketI: flight and impact blast | Original Noita sprite |
+
+These are prototypes, not full equivalents. XML direct/explosion damage is
+converted at 25 Terraria HP per Noita unit, XML lifetime becomes a 60 Hz fuse,
+and wand speed/lifetime/spread modifiers apply. Vanilla motion, blast size,
+status rules and collision replace native Noita rules. Heavy/slow bolt blast
+effects and extra modifier entities remain deferred. Terraria explosion
+preparation retains the mapped damage. Native Bomb can damage players/terrain.
+
+The ordinary Noita Wand also accepts these six entity paths (12 spell IDs,
+including trigger/timer variants) alongside spark/blue-spark/chainsaw. Its normal
+editor palette includes the new families. Unmapped ordinary-wand trees still
+fail validation; the debug integration mode renders them as harmless previews.
+Black Hole and other distinctive spells keep their Noita sprite sheets and
+animations in both debug modes; their native gameplay is not replaced.
+
+Debug cleanup directly deactivates bound vanilla test projectiles instead of
+calling Kill, which would detonate a real Bomb. Natural deaths and collisions
+retain vanilla effects and dispatch prebuilt Noita payloads once. Cleanup of
+existing demo/preview projectiles still suppresses payloads.
+
+### Focused in-game checks
+
+1. Select **Bomb**, **Solo**, **Fixed spell**, and **Terraria integration (live)**.
+   Fire once and wait at least 3 seconds: check the visible Terraria bomb,
+   bounce/fuse and natural blast. A 5-second auto interval lets its 180-frame
+   fuse finish; a shorter interval clears it before detonation.
+2. Fire another Bomb, then Clear shots or change modes before the fuse finishes.
+   It should disappear without a cleanup blast. Repeat manually and confirm
+   the selected spell remains Bomb.
+3. Try Arrow, Magic arrow and Rocket presets against a target/wall; inspect
+   `TerrariaAdapter`, hit and payload events in saved JSON. Test a trigger
+   carrying Bomb from the ordinary editor to verify mixed adapter payloads.
+4. Select Black Hole in integration mode: check that the original Noita
+   animation remains, with a report explaining harmless visual fallback.
+5. Switch Cycle spells back on and check that firing advances normally.
+
+The inventory in TERRARIA_MATCHES.md / spell-matches.json covers all 197 emitted
+entity paths: 6 implemented prototype paths, 32 candidate paths, 17 explicitly
+preserved Noita paths and 142 without an automatic match. Candidate matches
+need engineering comparisons and are not silently enabled.
+
+## General preview tests
+
+1. **Version and basic rendering:** verify the tooltip/HUD says v0.6.0, build
+   `terraria-adapters-fixed-spell-1`. Use Spark in Solo context. Aim horizontally, vertically
    and diagonally; repeat at another zoom level. Check that it starts near the
    hand and stays small and centered on its yellow outline. Test Bomb for an
    original solid sprite; it should remain harmless in preview mode.
@@ -77,14 +136,20 @@ case belonging to this item. Short intervals can truncate long effects.
 - XML/sprite preview deals no damage and executes only approximate movement,
   lifetime, contact/bounce and already-built timer/contact/death payloads.
   A minimum 12-frame life makes very short entities observable.
-- Gameplay demo mode retains the existing spark/blue-spark/chainsaw damage
-  adapter. Unsupported trees are still skipped in that mode.
+- Terraria integration mode runs live mapped Bomb/Arrow/Bullet/Rocket
+  projectiles plus the spark/blue-spark/chainsaw demo. Unmapped paths use
+  harmless Noita visuals. Live Bombs use vanilla damage and terrain explosion
+  rules; use XML preview when you only want to inspect graphics.
 
 Reports retain the latest 2048 cases and include recipes, unchanged native
 coverage statuses, actual root spawn counts, separate diagnostic-card counts,
 per-entity visual evidence, mapped profiles, full imported XML source nodes
 (deduplicated), deferred fields/components, later events and loaded version/path.
 A drawn sprite does not establish full spell support or visual fidelity.
+`TerrariaAdapter` and `GameplayExecuted` identify actual vanilla behavior;
+`fixed_spell` records whether a test held its selection. Legacy audit statuses
+still measure the original three-entity demo, so an adapted Bomb can retain
+that audit's Unsupported label while its report records the real Bomb adapter.
 
 ## XML import scope and validation
 
@@ -108,7 +173,7 @@ The supplied-data audit loaded **197/197 emitted entity definitions**, with
 sprite definition requests frames exceeding its PNG; it is rejected/reported.
 The 422-spell/1266-cast Lua regression audit is unchanged. Imported sprite/marker
 coverage is separate from the conservative three-entity gameplay audit.
-114 standalone checks and ten packaged-mod checks cover source behavior,
+123 standalone checks and fifteen packaged-mod checks cover source behavior,
 inheritance, frame bounds, scanner selection, report distinctions, item settings,
 neutral visualization and cleanup. The tModLoader 2026.08.3.0 package builds with
 zero errors/warnings. GPU drawing and in-game UI still require your playtest.

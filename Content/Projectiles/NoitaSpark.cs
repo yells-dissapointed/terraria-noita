@@ -15,6 +15,8 @@ public sealed class NoitaSpark : ModProjectile
     public override string Texture => "Terraria/Images/Projectile_" + ProjectileID.MagicMissile;
     private TriggerRunner? triggers;
     private CastDiagnostics? trace;
+    private SpellLiveCase? liveReport;
+    public void BindLiveReport(SpellLiveCase? report) => liveReport = report;
     private Vector2 direction;
     private int age;
     private bool chainsaw, debugVisible;
@@ -54,7 +56,7 @@ public sealed class NoitaSpark : ModProjectile
         if (Main.netMode != NetmodeID.SinglePlayer || Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers) return;
         var player = Main.player[Projectile.owner];
         trace?.Event($"Payload #{Projectile.whoAmI} fired at age {age}; {payload.Projectiles.Count} child projectile(s)");
-        if (player.active) DemoProjectileAdapter.Emit(payload, Projectile.GetSource_FromThis(), player, Projectile.Center, direction, trace, debugVisible);
+        if (player.active) GameplayProjectileAdapter.Emit(payload, Projectile.GetSource_FromThis(), player, Projectile.Center, direction, trace, debugVisible, liveReport);
     }
     public override void AI()
     {

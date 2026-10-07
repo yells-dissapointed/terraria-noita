@@ -286,6 +286,10 @@ using (var catalogForScan = New())
     Check(scan.Current().AlwaysCast.Single() == ids[0] && scan.Current().Deck.All(id => id == "LIGHT_BULLET"), "always-cast debug recipe uses the selected spell and support sparks");
     scan.SetMode(SpellDebugMode.AllContexts); scan.Select("LIGHT_BULLET_TIMER");
     Check(scan.Spell == "LIGHT_BULLET_TIMER" && scan.ContextIndex == 0, "preset selects the first context of the requested spell");
+    int heldIndex = scan.Index;
+    for (int i = 0; i < 20; i++) scan.Advance(holdSpell: true);
+    Check(scan.Index == heldIndex && scan.ContextIndex == 0 && scan.Spell == "LIGHT_BULLET_TIMER", "fixed mode retains both spell and context across manual/automatic repetitions");
+    scan.Advance(); Check(scan.Index == heldIndex + 1 && scan.ContextIndex == 1, "switching back to cycling resumes the following context");
     var neutral = catalogForScan.DefaultConfiguration();
     int released = 0;
     void ReleaseCase(Lua51Runtime r) { r.Dispose(); released++; }
@@ -316,6 +320,11 @@ using (var catalogForScan = New())
           !xmlReport.RootElement.GetProperty("cases")[1].GetProperty("visual_entities")[0].TryGetProperty("ImportedSources", out _), "report retains complete deferred XML data once per source instead of once per projectile");
 }
 var assets = new NoitaAssetCatalog(data);
+foreach (string path in new[] { "data/entities/projectiles/bomb.xml", "data/entities/projectiles/deck/arrow.xml", "data/entities/projectiles/deck/bullet.xml", "data/entities/projectiles/deck/bullet_heavy.xml", "data/entities/projectiles/deck/bullet_slow.xml", "data/entities/projectiles/deck/rocket.xml" })
+    Check(TerrariaSpellMatches.Find(path).Implemented && assets.Entity(path).Component("ProjectileComponent") != null, "implemented Terraria match has a real supplied entity definition: " + path);
+Check(!TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").Implemented &&
+      TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").UseNoitaSprite &&
+      !TerrariaSpellMatches.Find("data/entities/projectiles/deck/disc_bullet.xml").Implemented, "iconic black hole is preserved and candidate sawblade is not silently treated as a completed adapter");
 var sparkAsset = assets.Entity("data/entities/projectiles/deck/light_bullet.xml");
 var sparkProfile = assets.Profile(sparkAsset);
 Check(sparkAsset.Sources.Count >= 2 && sparkProfile.Sprites.Count > 0 && Math.Abs(sparkProfile.SpeedPerFrame - 800 / 60d) < .001, "base inheritance and XML mean speed are imported for spark");

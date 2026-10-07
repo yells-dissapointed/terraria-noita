@@ -89,11 +89,11 @@ public class NoitaWand : ModItem
             draft.Validate(); test = ModContent.GetInstance<AdapterSystem>().CreateRuntime();
             test.Configure(draft.Configuration());
             var plan = test.Cast(draft.ManaMax, draft.AlwaysCast);
-            trace.Capture(plan); DemoProjectileAdapter.Validate(plan.Root);
+            trace.Capture(plan); GameplayProjectileAdapter.Validate(plan.Root);
             var inspection = DemoCapabilities.Inspect(plan, test.DefaultConfiguration());
-            foreach (string missing in inspection.Missing) trace.Event("NOT IMPLEMENTED: " + missing);
+            foreach (string missing in inspection.Missing) trace.Event(GameplayProjectileAdapter.DescribeGap(missing));
             trace.Event(inspection.ProjectileCount == 0 ? "No projectile in this cast; try a follow-up spell." :
-                "Demo entity tree accepted. Visuals, collisions and native fidelity require in-game checks.");
+                "Gameplay prototype tree accepted. Terraria adapters and Noita demo effects require in-game checks; native fidelity remains partial.");
         }
         catch (Exception e) { trace.Fail(e.Message); }
         finally { if (test != null) ModContent.GetInstance<AdapterSystem>().Release(test); }
@@ -111,7 +111,7 @@ public class NoitaWand : ModItem
         try
         {
             var plan = Runtime().Cast(mana, Definition.AlwaysCast); trace.Capture(plan);
-            DemoProjectileAdapter.Validate(plan.Root);
+            GameplayProjectileAdapter.Validate(plan.Root);
             mana = Math.Clamp(plan.Mana, 0, Definition.ManaMax);
             cooldown = Math.Max(1, (int)Math.Ceiling(Math.Max(plan.Root.Number("fire_rate_wait"), plan.ReloadRequest ?? 0)));
             Vector2 hand = player.RotatedRelativePoint(player.MountedCenter);
@@ -122,7 +122,7 @@ public class NoitaWand : ModItem
             Vector2 muzzle = hand + aim * 16;
             if (!Collision.CanHitLine(hand, 1, 1, muzzle, 1, 1)) muzzle = hand;
             trace.Event($"Muzzle {Vector2.Distance(hand, muzzle):0.#} px from hand; cooldown {cooldown} frames (approximate)");
-            DemoProjectileAdapter.Emit(plan.Root, source, player, muzzle, aim, trace, DebugVisible); lastError = null;
+            GameplayProjectileAdapter.Emit(plan.Root, source, player, muzzle, aim, trace, DebugVisible); lastError = null;
         }
         catch (Exception e) { trace.Fail(e.Message); Report(e.Message); Release(); cooldown = 60; }
         return false;

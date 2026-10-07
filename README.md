@@ -9,6 +9,17 @@ v0.5.1 enlarges spell sprites and fallback visuals to 1.75× around their existi
 origins. Projectile positions and gameplay properties are unchanged. See
 [DEBUG_WAND.md](DEBUG_WAND.md) for the live-report findings and focused tests.
 
+## Terraria matches and fixed testing (v0.6.0)
+
+See [TERRARIA_MATCHES.md](TERRARIA_MATCHES.md) for the reviewed mapping inventory.
+The first pass enables Bomb → Bomb, Arrow → WoodenArrowFriendly, basic/heavy/slow
+bolts → Bullet, and Rocket → RocketI. Their Terraria behavior is a prototype
+substitution, with Noita fuse/damage/speed/lifetime mapped where supported.
+Black Hole and other distinctive effects keep their Noita animations.
+The debug wand can hold one selected spell/context for manual or automatic
+repeated tests. Live Bombs can alter terrain; harmless XML preview remains the
+default. See [DEBUG_WAND.md](DEBUG_WAND.md) for the exact controls and tests.
+
 ## Try it
 
 1. Clone this branch into your tModLoader `ModSources` folder, naming the folder
@@ -30,7 +41,7 @@ Windows x64 and Linux x64 LuaJIT libraries are included. macOS requires building
 an appropriate native library; it has not been validated. See [Native/README.md](Native/README.md).
 The wand starts with its own 100 mana pool, displayed in its tooltip.
 
-## Editor and debugging (v0.5.0)
+## Editor and debugging (v0.6.0)
 
 Right-click while holding a wand. Changes are made to a draft until you click
 **Apply**. Choose spells from the palette to append slots; use the up/down buttons
@@ -40,8 +51,8 @@ actions per cast, mana capacity and mana recharge with the plus/minus controls.
 Applied deck order, always-cast cards, stats, mana and debug preference are saved
 with each item. Closing or switching items discards unapplied edits.
 
-The default palette contains 19 checked spell IDs using spark, blue spark and
-chainsaw entity paths. **All / experimental** exposes the complete original
+The default palette includes the spark/chainsaw demo and new Bomb, Arrow,
+Magic arrow/bolt/sphere and Rocket adapter families. **All / experimental** exposes the complete original
 422-spell table. Other spells may fail because their native APIs or entity
 renderers are unavailable. This is a development editor with unrestricted card
 selection, not a spell acquisition or inventory system.
@@ -63,7 +74,7 @@ or at the hand if a wall blocks that offset. Chainsaw is a visible stationary
 base 8 frames before lifetime modifiers. It does not dig Terraria blocks or
 replicate Noita's terrain effects.
 
-## Separate live debugging wand (v0.5.0)
+## Separate live debugging wand (v0.6.0)
 
 Craft **Spell Debug Wand** with **one dirt block at a workbench**. It is a cyan
 variant of the wand. Left-click casts the selected test case and advances to the
@@ -82,7 +93,10 @@ loads original local sprites and basic XML motion/lifetime settings for emitted
 entities. Missing graphics use orange labeled entity markers. Cyan diagnostic
 cards identify no output, Lua errors or unexercised targets and do not count as
 emitted roots. Preset buttons make targeted rendering/trigger tests easy.
-**Gameplay demo** mode retains the three existing damage adapters.
+**Terraria integration (live)** reuses actual Bomb, Arrow, Bullet and Rocket
+projectiles for six mapped Noita entity paths, while unmapped paths stay harmless
+Noita visual previews. Select **Fixed spell** to repeat the same spell/context
+with manual firing or auto; Cycle spells restores advancing tests.
 
 Before each case, the tool removes its own previous projectiles and suppresses
 cleanup-triggered payloads. Longer lifetimes/timers may therefore be truncated
@@ -109,7 +123,9 @@ files. The importer resolves bases, component overrides/removal and retains
 unmapped data. The debug wand visualizes emitted entities using original sprites
 or clearly labeled markers, approximate speed/gravity/drag/lifetime, and
 already-built trigger payloads. The ordinary wand also uses original sprites
-for its three supported entity paths, keeping its existing gameplay adapter.
+for its spark/blue-spark/chainsaw demo, alongside six mapped vanilla projectile
+paths. Bomb/Arrow use Terraria sprites; bullet variants and Rocket preserve
+Noita artwork while using Terraria behavior.
 
 The supplied-data audit loaded **197 emitted entity definitions**, **93 with
 usable sprite metadata** and **104 marker-only**. This establishes data/frame
@@ -161,8 +177,9 @@ complete action table does **not** establish that every spell is supported.
 - **Entity visualization:** the debug wand imports full XML data and sprite
   metadata with bounded approximate movement and neutral contact/payload tests.
   Labels distinguish missing graphics from failed/no-output casts. The gameplay
-  adapter still supports only spark, blue spark and chainsaw; native components
-  and materials/terrain are deferred.
+  adapter adds six vanilla-backed entity paths to spark/blue-spark/chainsaw.
+  The native Noita components/material simulation remains deferred; the Bomb
+  adapter uses Terraria's real terrain explosion.
 - **Scheduling:** the host records raw reload requests, including fractions and
   negatives. The demo uses an approximate cooldown. Noita's native integer
   conversion and complete reload/frame scheduling are not reproduced.
@@ -174,8 +191,8 @@ complete action table does **not** establish that every spell is supported.
 - **Persistence/networking:** edited definitions and mana are saved with the item.
   The active Lua draw/discard position resets after loading, cloning or applying
   edits. Multiplayer is not implemented.
-- **Verification:** 114 original-script, path, editor serialization and diagnostic
-  checks pass in the standalone harness. Ten additional checks against the
+- **Verification:** 123 original-script, path, editor serialization and diagnostic
+  checks pass in the standalone harness. Fifteen additional checks against the
   packaged mod verify real tModLoader item save/load, cloning, the chainsaw
   damage hitbox, packaged sprite geometry, build identity, debug-item persistence,
   clone isolation, harmless XML visualization and payload suppression during cleanup. The mod builds and packages with tModLoader 2026.08.3.0 with zero
@@ -239,3 +256,9 @@ dotnet run --project Tools/XmlAudit -- /absolute/path/to/extracted-noita spell-a
 This audits inherited definitions, PNG headers/frame bounds and deferred
 components for emitted entity paths. It does not require a graphics device and
 does not prove successful GPU rendering.
+
+Reproduce the match inventory with:
+
+```sh
+dotnet run --project Tools/SpellMatches -- /absolute/path/to/extracted-noita spell-audit.json spell-matches.json
+```

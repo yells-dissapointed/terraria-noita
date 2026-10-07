@@ -4,7 +4,7 @@ Items: {
         Tooltip:
             '''
             Left-click to test the next spell; right-click for scan controls
-            Automatic scan with fresh decks and full test mana
+            Automatic scan or fixed-spell repeat with fresh decks and full test mana
             Harmless XML/sprite preview with labeled markers for missing visuals
             Single-player development tool
             '''
