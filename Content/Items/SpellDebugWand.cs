@@ -28,6 +28,17 @@ public sealed class SpellDebugWand : ModItem
     public SpellDebugMode Mode { get; private set; } = SpellDebugMode.FollowedBySparks;
     public bool VisualPreview { get; private set; } = true;
     public bool FixedSpell { get; private set; }
+    public int Movement { get; private set; }
+    public int Tracking { get; private set; }
+    public int Speed { get; private set; }
+    public bool Bounce { get; private set; }
+    public string[] ModifierCards => DebugModifiers.Cards(Movement, Tracking, Speed, Bounce);
+    private void ModifiersChanged() { Stop(); CleanupCurrent(); Status = "Modifiers: " + (ModifierCards.Length == 0 ? "none" : string.Join(" + ", ModifierCards)) + ". Real cards run before the selected spell; visual mode remains harmless."; }
+    public void ChangeMovement() { Movement = (Movement + 1) % DebugModifiers.Movement.Length; ModifiersChanged(); }
+    public void ChangeTracking() { Tracking = (Tracking + 1) % DebugModifiers.Tracking.Length; ModifiersChanged(); }
+    public void ChangeSpeed() { Speed = (Speed + 1) % DebugModifiers.Speed.Length; ModifiersChanged(); }
+    public void ToggleBounce() { Bounce = !Bounce; ModifiersChanged(); }
+    public void ResetModifiers() { Movement = Tracking = Speed = 0; Bounce = false; ModifiersChanged(); }
     private Dictionary<string, JsonElement>? defaults;
     private Dictionary<string, SpellCard>? cards;
     private int countdown, manualCooldown;
@@ -106,7 +117,7 @@ public sealed class SpellDebugWand : ModItem
     public void ChangeVisualization()
     {
         Stop(); CleanupCurrent(); VisualPreview = !VisualPreview;
-        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Terraria integration: mapped spells deal damage; Bomb uses a real terrain explosion. Unmapped spells stay visual.";
+        Status = VisualPreview ? "XML/sprite preview: harmless entities; deferred behavior remains logged." : "Live gameplay: teleports move you, holes/chainsaws cut terrain, saws can hit you. Unmapped spells stay visual.";
     }
     public void Restart()
     {
@@ -121,6 +132,8 @@ public sealed class SpellDebugWand : ModItem
             { spark.CancelDebugPayloads(); projectile.Kill(); }
             else if (projectile is { active: true, ModProjectile: NoitaVisualProjectile visual } && ReferenceEquals(visual.Diagnostics, LastTrace))
             { visual.CancelDebugPayloads(); projectile.Kill(); }
+            else if (projectile is { active: true, ModProjectile: NoitaEffectProjectile effect } && ReferenceEquals(effect.Diagnostics, LastTrace))
+                effect.RemoveForDebug();
             else if (projectile is { active: true } && projectile.TryGetGlobalProjectile<TerrariaProjectileBinding>(out var binding) &&
                 binding.Bound && ReferenceEquals(binding.Diagnostics, LastTrace)) binding.RemoveForDebug(projectile);
         }
@@ -134,11 +147,11 @@ public sealed class SpellDebugWand : ModItem
             if (Sequence!.Complete) { Stop(); Status = "All selected cases finished. Save report or Restart."; return; }
             CleanupCurrent();
             var manager = ModContent.GetInstance<AdapterSystem>();
-            var test = SpellAudit.RunCase(Sequence.Spell, Sequence.ContextIndex, manager.CreateRuntime, defaults!, manager.Release);
+            var test = SpellAudit.RunCase(Sequence.Spell, Sequence.ContextIndex, manager.CreateRuntime, defaults!, manager.Release, ModifierCards);
             var trace = new CastDiagnostics(); LastTrace = trace;
             var definition = new WandDefinition { Deck = test.Deck, AlwaysCast = test.AlwaysCast, ManaMax = 10000 };
             trace.Begin($"Live debug: {test.Spell} / {test.Context}", definition, 10000);
-            var result = new SpellLiveCase { Test = test, Trace = trace, VisualPreview = VisualPreview, FixedSpell = FixedSpell }; Report.Add(result);
+            var result = new SpellLiveCase { Test = test, Trace = trace, VisualPreview = VisualPreview, FixedSpell = FixedSpell, Modifiers = new(ModifierCards) }; Report.Add(result);
             if (test.Plan != null) trace.Capture(test.Plan);
             foreach (string missing in test.Inspection?.Missing ?? new List<string>())
                 trace.Event(VisualPreview ? "NOT IMPLEMENTED: " + missing : GameplayProjectileAdapter.DescribeGap(missing));
@@ -203,13 +216,17 @@ public sealed class SpellDebugWand : ModItem
         if (manualCooldown > 0) manualCooldown--;
         if (player.dead || !ReferenceEquals(player.HeldItem.ModItem, this)) Stop();
     }
-    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); tag["fixedSpell"] = (byte)(FixedSpell ? 1 : 0); }
+    public override void SaveData(TagCompound tag) { tag["mode"] = (int)Mode; tag["interval"] = Interval; tag["visualPreview"] = (byte)(VisualPreview ? 1 : 0); tag["fixedSpell"] = (byte)(FixedSpell ? 1 : 0); tag["movement"] = Movement; tag["tracking"] = Tracking; tag["speed"] = Speed; tag["bounce"] = (byte)(Bounce ? 1 : 0); }
     public override void LoadData(TagCompound tag)
     {
         int mode = tag.GetInt("mode"); Mode = Enum.IsDefined(typeof(SpellDebugMode), mode) ? (SpellDebugMode)mode : SpellDebugMode.FollowedBySparks;
         int interval = tag.GetInt("interval"); Interval = interval is 60 or 120 or 300 or 600 ? interval : 120;
         VisualPreview = !tag.ContainsKey("visualPreview") || tag.GetByte("visualPreview") != 0;
         FixedSpell = tag.ContainsKey("fixedSpell") && tag.GetByte("fixedSpell") != 0;
+        Movement = Math.Clamp(tag.GetInt("movement"), 0, DebugModifiers.Movement.Length - 1);
+        Tracking = Math.Clamp(tag.GetInt("tracking"), 0, DebugModifiers.Tracking.Length - 1);
+        Speed = Math.Clamp(tag.GetInt("speed"), 0, DebugModifiers.Speed.Length - 1);
+        Bounce = tag.ContainsKey("bounce") && tag.GetByte("bounce") != 0;
         Stop(); Sequence = null; defaults = null; cards = null; Report = new(); LastTrace = null;
     }
     public override void ModifyTooltips(List<TooltipLine> tooltips)

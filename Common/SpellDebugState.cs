@@ -15,6 +15,7 @@ public sealed class SpellDebugState : UIState
     private UIPanel panel = null!;
     private UIText cursor = null!, status = null!, detail = null!;
     private UITextPanel<string> auto = null!, context = null!, interval = null!, visualization = null!, fixedSpell = null!;
+    private UITextPanel<string> movement = null!, tracking = null!, speed = null!, bounce = null!;
     public SpellDebugState(SpellDebugWand wand, Action closePanel) { Wand = wand; close = closePanel; }
     private static void Place(UIElement e, float x, float y, float width, float height)
     {
@@ -32,7 +33,7 @@ public sealed class SpellDebugState : UIState
     public override void OnInitialize()
     {
         panel = new UIPanel { BackgroundColor = new Color(20, 32, 45) }; panel.SetPadding(12);
-        panel.Left.Set(-630, 1); panel.Top.Set(60, 0); panel.Width.Set(610, 0); panel.Height.Set(446, 0); Append(panel);
+        panel.Left.Set(-630, 1); panel.Top.Set(32, 0); panel.Width.Set(610, 0); panel.Height.Set(552, 0); Append(panel);
         Label($"Spell debugging wand | v{Wand.Mod.Version}", 0);
         Button("Close", close, 508, 0, 72);
         cursor = Label("", 34); status = Label("", 62); detail = Label("", 84);
@@ -49,17 +50,19 @@ public sealed class SpellDebugState : UIState
         }, 326, 154, 106);
         Button("Clear shots", Wand.CleanupCurrent, 438, 154, 104);
         fixedSpell = Button("", Wand.ToggleFixedSpell, 0, 190, 250);
-        Label("Auto stops at the end. Switching items stops; inventory/chat pauses.", 220);
-        Label("Orange: emitted entity marker. Cyan card: no target projectile claimed.", 242);
-        visualization = Button("", Wand.ChangeVisualization, 0, 272, 320);
-        Button("Loaded file", () => Main.NewText(BuildIdentity.LoadedPath(Wand.Mod), Color.Cyan), 438, 272, 104);
-        Label("Live integration can damage enemies/terrain. XML preview is harmless.", 312);
-        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error", "Arrow", "Magic arrow", "Rocket" };
-        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM", "ARROW", "BULLET", "ROCKET" };
-        panel.Height.Set(480, 0);
+        movement = Button("", Wand.ChangeMovement, 0, 224, 278);
+        tracking = Button("", Wand.ChangeTracking, 284, 224, 278);
+        speed = Button("", Wand.ChangeSpeed, 0, 258, 278);
+        bounce = Button("", Wand.ToggleBounce, 284, 258, 160);
+        Button("Reset mods", Wand.ResetModifiers, 450, 258, 112);
+        visualization = Button("", Wand.ChangeVisualization, 0, 294, 320);
+        Button("Loaded file", () => Main.NewText(BuildIdentity.LoadedPath(Wand.Mod), Color.Cyan), 438, 294, 104);
+        Label("Live effects alter terrain/location and may hit you. Preview is harmless.", 326);
+        string[] names = { "Spark", "Bomb", "Trigger", "Timer", "Chainsaw", "Mist", "Black hole", "Lua error", "Arrow", "Magic arrow", "Rocket", "Teleport", "Short teleport", "Return teleport", "Enemy teleport", "Tentacle", "Sawblade", "Giant saw", "Omega saw", "Super hole" };
+        string[] ids = { "LIGHT_BULLET", "BOMB", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TIMER", "CHAINSAW", "MIST_ALCOHOL", "BLACK_HOLE", "DAMAGE_RANDOM", "ARROW", "BULLET", "ROCKET", "TELEPORT_PROJECTILE", "TELEPORT_PROJECTILE_SHORT", "TELEPORT_PROJECTILE_STATIC", "TELEPORT_PROJECTILE_CLOSER", "TENTACLE", "DISC_BULLET", "DISC_BULLET_BIG", "DISC_BULLET_BIGGER", "BLACK_HOLE_BIG" };
         for (int i = 0; i < ids.Length; i++)
         {
-            string spell = ids[i]; Button(names[i], () => Wand.Select(spell), i % 4 * 140, 342 + i / 4 * 34, 132);
+            string spell = ids[i]; Button(names[i], () => Wand.Select(spell), i % 4 * 140, 352 + i / 4 * 34, 132);
         }
     }
     public override void Update(GameTime gameTime)
@@ -76,6 +79,10 @@ public sealed class SpellDebugState : UIState
         interval.SetText($"Interval: {Wand.Interval / 60f:0.#} seconds");
         visualization.SetText(Wand.VisualPreview ? "Mode: XML/sprite preview (harmless)" : "Mode: Terraria integration (live)");
         fixedSpell.SetText(Wand.FixedSpell ? "Selection: Fixed spell" : "Selection: Cycle spells");
+        movement.SetText("Movement: " + new[] { "Normal", "Sine wave", "Spiral", "Ping-pong" }[Wand.Movement]);
+        tracking.SetText("Tracking: " + new[] { "None", "Homing", "Short homing", "Rotate toward target" }[Wand.Tracking]);
+        speed.SetText("Speed: " + new[] { "Normal", "Faster", "Decelerate", "Accelerate" }[Wand.Speed]);
+        bounce.SetText(Wand.Bounce ? "Bounce: +10" : "Bounce: None");
         base.Update(gameTime);
     }
 }

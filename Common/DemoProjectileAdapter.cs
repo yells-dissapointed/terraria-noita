@@ -45,6 +45,7 @@ public static class DemoProjectileAdapter
             projectile.timeLeft = Math.Clamp((chainsaw ? 8 : 40) + (int)shot.Number("lifetime_add"), 1, 3600);
             ((NoitaSpark)projectile.ModProjectile).Configure(node, chainsaw, direction, trace, debugVisible);
             ((NoitaSpark)projectile.ModProjectile).BindLiveReport(liveReport);
+            projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, trace);
             spawned++;
             trace?.Event($"Spawn {System.IO.Path.GetFileName(node.Entity)} #{id}, damage {damage}, life {projectile.timeLeft} frames");
         }

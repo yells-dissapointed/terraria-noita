@@ -73,9 +73,10 @@ public sealed class SpellAudit
         return result;
     }
     public static SpellAuditCase RunCase(string spell, int context, Func<Lua51Runtime> create,
-        IReadOnlyDictionary<string, JsonElement> defaults, Action<Lua51Runtime>? dispose = null)
+        IReadOnlyDictionary<string, JsonElement> defaults, Action<Lua51Runtime>? dispose = null, IReadOnlyList<string>? modifiers = null)
     {
         var result = CreateCase(spell, context);
+        if (modifiers != null) result.Deck.InsertRange(0, modifiers);
         // Factory failures are infrastructure failures: stop, rather than falsely blame every spell.
         var runtime = create();
         try

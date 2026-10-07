@@ -322,9 +322,78 @@ using (var catalogForScan = New())
 var assets = new NoitaAssetCatalog(data);
 foreach (string path in new[] { "data/entities/projectiles/bomb.xml", "data/entities/projectiles/deck/arrow.xml", "data/entities/projectiles/deck/bullet.xml", "data/entities/projectiles/deck/bullet_heavy.xml", "data/entities/projectiles/deck/bullet_slow.xml", "data/entities/projectiles/deck/rocket.xml" })
     Check(TerrariaSpellMatches.Find(path).Implemented && assets.Entity(path).Component("ProjectileComponent") != null, "implemented Terraria match has a real supplied entity definition: " + path);
-Check(!TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").Implemented &&
+Check(TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").Implemented &&
       TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").UseNoitaSprite &&
-      !TerrariaSpellMatches.Find("data/entities/projectiles/deck/disc_bullet.xml").Implemented, "iconic black hole is preserved and candidate sawblade is not silently treated as a completed adapter");
+      TerrariaSpellMatches.Find("data/entities/projectiles/deck/disc_bullet.xml").Implemented, "custom black hole and saw adapters preserve original visual identity");
+
+foreach (string entity in new[] { "teleport_projectile", "teleport_projectile_short", "teleport_projectile_static", "teleport_projectile_closer", "black_hole", "black_hole_big", "tentacle", "disc_bullet", "disc_bullet_big", "disc_bullet_bigger" })
+{
+    string path = "data/entities/projectiles/deck/" + entity + ".xml";
+    var effect = SpellEffectProfile.Load(assets, path);
+    Check(effect.Kind != NoitaEffectKind.None && effect.Visual.Lifetime > 0 && TerrariaSpellMatches.Find(path).Implemented, "custom effect reads supplied entity: " + entity);
+}
+var tentacleEffect = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/tentacle.xml");
+Check(tentacleEffect.Points == 16 && tentacleEffect.Segments.Count == 15 && tentacleEffect.Visual.SpeedPerFrame == 8 && Math.Abs(tentacleEffect.Damage - .8) < .001,
+    "Verlet tentacle imports all 15 real segment sprites, 16 points, per-step launch speed and melee damage");
+var holeEffect = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/black_hole.xml");
+var superHole = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/black_hole_big.xml");
+Check(holeEffect.RadiusAt(0) == 12 && holeEffect.RadiusAt(500) == 12 && holeEffect.Damage == 0 && superHole.RadiusAt(0) == 1 && superHole.RadiusAt(99) == 34 && superHole.RadiusAt(999) == 64,
+    "ordinary black hole retains 12px digging and zero direct damage; super-hole grows every three frames to 64px");
+Check(SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_short.xml").Visual.Lifetime == 8 &&
+      SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_static.xml").Visual.SpeedPerFrame == 0,
+    "short teleport remains eight frames and return teleport remains static");
+Check(!SpellEffectProfile.Supports("data/entities/projectiles/deck/black_hole_giga.xml") && !SpellEffectProfile.Supports("data/fake/disc_bullet.xml"),
+    "unimplemented giga hole and similarly named foreign entities do not silently gain gameplay");
+var openLanding = SpellLanding.Find(new(10, 20), _ => true);
+var blockedLanding = SpellLanding.Find(new(10, 20), _ => false);
+var nearbyLanding = SpellLanding.Find(new(10, 20), p => p.Y <= 12);
+Check(openLanding == new System.Numerics.Vector2(10, 20) && blockedLanding == null && nearbyLanding.HasValue && System.Numerics.Vector2.Distance(nearbyLanding.Value, new(10, 20)) <= 8.001,
+    "teleport landing uses the exact clear target, nearest nearby clearance, or cancellation when fully blocked");
+Check(DebugModifiers.Cards(0, 0, 0, false).Length == 0 && SpellVisuals.TerrariaScale == 1 && SpellVisuals.Scale == 1.75f,
+    "default debug deck has no injected cards; Terraria and original Noita sprites have separate scales");
+using (var catalogRuntime = New())
+{
+    var ids = catalogRuntime.SpellIds(); var neutral = catalogRuntime.DefaultConfiguration();
+    Check(DebugModifiers.Movement.Concat(DebugModifiers.Tracking).Concat(DebugModifiers.Speed).Append("BOUNCE").Where(id => id.Length > 0).All(ids.Contains),
+        "all debug modifier choices are actual original Noita cards");
+    for (int movement = 0; movement < 4; movement++)
+        for (int tracking = 0; tracking < 4; tracking++)
+            for (int speed = 0; speed < 4; speed++)
+                for (int bounce = 0; bounce < 2; bounce++)
+                {
+                    var choices = DebugModifiers.Cards(movement, tracking, speed, bounce != 0);
+                    var modified = SpellAudit.RunCase("BULLET", 0, New, neutral, modifiers: choices);
+                    Check(modified.Plan != null && modified.Status != SpellAuditStatus.ScriptError && modified.Deck.SequenceEqual(choices.Append("BULLET")) &&
+                        choices.All(id => modified.Plan.Events.Any(e => e.Kind == "action" && e.Value.GetString() == id)) &&
+                        modified.Plan.Root.Projectiles.Any(p => p.Entity == "data/entities/projectiles/deck/bullet.xml"),
+                        $"real Lua executes modifier recipe {movement}/{tracking}/{speed}/{bounce} before the intended projectile");
+                    var motion = SpellMotion.Load(modified.Plan!.Root, assets);
+                    Check(motion.Sine == (movement == 1) && motion.Spiral == (movement == 2) && motion.PingPong == (movement == 3) &&
+                        (motion.HomingRange > 0) == (tracking != 0) && (motion.Bounces > 0) == (bounce != 0),
+                        $"movement adapter reads actual cast config for recipe {movement}/{tracking}/{speed}/{bounce}");
+                }
+    var followed = SpellAudit.RunCase("TENTACLE_TIMER", 1, New, neutral, modifiers: new[] { "HOMING", "BOUNCE" });
+    Check(followed.Plan != null && followed.Plan.Root.Projectiles[0].Triggers.Any(t => t.Kind == "timer" && t.DelayFrames == 20) && followed.Deck[0] == "HOMING",
+        "modifier choices retain real tentacle timer payload construction");
+    var always = SpellAudit.RunCase("LIGHT_BULLET", 2, New, neutral, modifiers: new[] { "SINEWAVE" });
+    Check(always.Plan != null && always.AlwaysCast.SequenceEqual(new[] { "LIGHT_BULLET" }) && always.Deck[0] == "SINEWAVE", "debug modifiers retain the original always-cast recipe and Lua ordering");
+}
+var noMotion = new SpellMotion();
+Check(System.Numerics.Vector2.Distance(noMotion.Step(new(8, 2), 1), new(8, 2)) < .001, "neutral movement leaves velocity unchanged");
+var homingMotion = new SpellMotion { HomingRange = 240, TurnRate = .1 };
+var turned = homingMotion.Step(new(10, 0), 1, new System.Numerics.Vector2(0, 1));
+Check(Math.Abs(turned.Length() - 10) < .001 && Math.Abs(Math.Atan2(turned.Y, turned.X) - .1) < .001, "homing turns toward the target within the allowed angular step while preserving speed");
+Check(homingMotion.Step(System.Numerics.Vector2.Zero, 1, new System.Numerics.Vector2(1, 1)) == System.Numerics.Vector2.Zero, "homing does not launch static return teleport or static black holes");
+var accel = new SpellMotion { Acceleration = Math.Exp(3 / 60d) };
+var decel = new SpellMotion { Acceleration = Math.Exp(-6 / 60d) };
+Check(accel.Step(new(10, 0), 1).Length() > 10 && decel.Step(new(10, 0), 1).Length() < 10, "native friction modifiers map to accelerating and decelerating trajectories");
+foreach (var moving in new[] { new SpellMotion { Sine = true }, new SpellMotion { Spiral = true }, new SpellMotion { PingPong = true }, accel })
+{
+    var velocity = new System.Numerics.Vector2(10, 0); bool changed = false;
+    for (int age = 1; age <= 3600; age++) { velocity = moving.Step(velocity, age); changed |= System.Numerics.Vector2.Distance(velocity, new(10, 0)) > .01; }
+    Check(changed && float.IsFinite(velocity.X) && float.IsFinite(velocity.Y) && velocity.Length() <= 120.01, "movement remains finite and bounded through a full extended lifetime");
+}
+
 var sparkAsset = assets.Entity("data/entities/projectiles/deck/light_bullet.xml");
 var sparkProfile = assets.Profile(sparkAsset);
 Check(sparkAsset.Sources.Count >= 2 && sparkProfile.Sprites.Count > 0 && Math.Abs(sparkProfile.SpeedPerFrame - 800 / 60d) < .001, "base inheritance and XML mean speed are imported for spark");

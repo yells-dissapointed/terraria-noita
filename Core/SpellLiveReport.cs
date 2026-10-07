@@ -13,6 +13,7 @@ public sealed class SpellLiveCase
     public int RootProjectilesSpawned { get; set; }
     public bool VisualPreview { get; set; }
     public bool FixedSpell { get; set; }
+    public List<string> Modifiers { get; set; } = new();
     public int DiagnosticCardsSpawned { get; set; }
     public List<VisualEntityEvidence> VisualEntities { get; set; } = new();
     public CastDiagnostics Trace { get; set; } = new();
@@ -28,6 +29,7 @@ public sealed class VisualEntityEvidence
     public List<string> Sources { get; set; } = new();
     public List<string> Components { get; set; } = new();
     public List<string> SpritePaths { get; set; } = new();
+    public List<string> MovementSources { get; set; } = new();
     public List<string> Gaps { get; set; } = new();
     public NoitaVisualProfile? PreviewProfile { get; set; }
     public int PreviewLifetimeFrames { get; set; }
@@ -48,11 +50,12 @@ public sealed class SpellLiveReport
     public string Json(string loadedVersion, string loadedPath) => JsonSerializer.Serialize(new {
         version = 2, loaded_mod_version = loadedVersion, build = BuildStamp.Id, loaded_mod_path = loadedPath,
         spell_visual_scale = SpellVisuals.Scale,
+        terraria_sprite_scale = SpellVisuals.TerrariaScale,
         started_utc = StartedUtc, dropped_cases = DroppedCases,
         imported_xml = Cases.SelectMany(c => c.VisualEntities).SelectMany(e => e.ImportedSources).GroupBy(p => p.Key).ToDictionary(g => g.Key, g => g.First().Value),
-        notes = "Visual preview is harmless. Terraria integration executes explicit Bomb/Arrow/Bullet/Rocket matches and the existing spark/chainsaw demo; unmapped paths preserve harmless Noita visuals. GameplayExecuted and TerrariaAdapter identify live engine behavior. Original conservative audit statuses remain unchanged. Diagnostic cards are separate from emitted entities. Native bombs can damage players and terrain. Fixed-spell mode repeats the selected case until stopped. Cleanup deactivates bound vanilla projectiles without Kill/explosion callbacks and suppresses demo/visual payloads; short intervals cut effects short. Native fidelity and graphics require in-game checks.",
+        notes = "Visual preview is harmless, including teleports/holes; supported movement modifiers can steer neutral previews. Live integration executes vanilla Bomb/Arrow/Bullet/Rocket, spark/chainsaw, and explicit teleport/black-hole/tentacle/saw adapters. Unmapped paths remain harmless previews. GameplayExecuted and TerrariaAdapter identify the adapter; MovementSources identifies imported movement data. Added debug modifiers are real cards preceding the target in its deck; Always cast retains original Lua ordering. Original conservative audit statuses remain unchanged and may report legacy gaps now covered by adapters. Terrain destruction, relocation and caster damage occur only in live mode. Native Terraria sprites use 1x; Noita sprites use 1.75x. Cleanup cancels teleports, detonations and payloads but cannot undo prior world effects. Short intervals cut effects short. Per-entity gaps state remaining fidelity limits.",
         cases = Cases.Select(c => new { test = c.Test, root_projectiles_spawned = c.RootProjectilesSpawned,
-            visual_preview = c.VisualPreview, fixed_spell = c.FixedSpell, diagnostic_cards_spawned = c.DiagnosticCardsSpawned, visual_entities = c.VisualEntities,
+            visual_preview = c.VisualPreview, fixed_spell = c.FixedSpell, modifiers = c.Modifiers, diagnostic_cards_spawned = c.DiagnosticCardsSpawned, visual_entities = c.VisualEntities,
             trace = JsonSerializer.Deserialize<JsonElement>(c.Trace.Json()) }).ToArray()
     }, new JsonSerializerOptions { WriteIndented = true });
 }

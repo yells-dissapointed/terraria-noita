@@ -13,7 +13,9 @@ namespace terrarianoita.Common;
 public static class GameplayProjectileAdapter
 {
     public static string DescribeGap(string missing) => missing.StartsWith("Entity: ", StringComparison.Ordinal) && TerrariaSpellMatches.Find(missing[8..]).Implemented ?
-        "LEGACY AUDIT GAP, now covered by Terraria prototype: " + missing : "NOT IMPLEMENTED: " + missing;
+        "LEGACY AUDIT GAP, now covered by gameplay adapter: " + missing :
+        missing.StartsWith("Config: extra_entities", StringComparison.Ordinal) || missing.StartsWith("Config: bounces", StringComparison.Ordinal) ?
+        "LEGACY AUDIT FIELD; see per-entity movement sources/gaps: " + missing : "NOT IMPLEMENTED: " + missing;
     public static int VanillaType(TerrariaSpellPrototype prototype) => prototype switch {
         TerrariaSpellPrototype.Bomb => ProjectileID.Bomb, TerrariaSpellPrototype.Arrow => ProjectileID.WoodenArrowFriendly,
         TerrariaSpellPrototype.Bullet => ProjectileID.Bullet, TerrariaSpellPrototype.Rocket => ProjectileID.RocketI,
@@ -37,6 +39,11 @@ public static class GameplayProjectileAdapter
         {
             var single = new ShotPlan { Committed = true, Config = shot.Config, Projectiles = new() { node } };
             var match = TerrariaSpellMatches.Find(node.Entity);
+            if (SpellEffectProfile.Supports(node.Entity))
+            {
+                spawned += SpellEffectAdapter.Emit(shot, node, source, player, position, direction, trace, debugVisible, result);
+                continue;
+            }
             if (!match.Implemented)
             {
                 // Preserve Noita visuals for unmapped/debug-only spells. They remain harmless.
@@ -78,6 +85,7 @@ public static class GameplayProjectileAdapter
             evidence.Gaps.Add(match.Notes); evidence.Gaps.Add("Prototype conversion: 25 Terraria HP per Noita damage unit; vanilla physics/blast radius/status replace native rules; unmapped modifiers remain deferred");
             result?.VisualEntities.Add(evidence);
             projectile.GetGlobalProjectile<TerrariaProjectileBinding>().Configure(projectile, node, direction, trace, result, evidence, profile, match.UseNoitaSprite, debugVisible);
+            projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, trace, evidence);
             trace?.Event($"Terraria {match.TerrariaProjectile} for {System.IO.Path.GetFileName(node.Entity)} #{id}: damage {damage}, life {projectile.timeLeft}; {match.Notes}");
             spawned++;
         }

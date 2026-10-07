@@ -47,7 +47,8 @@ public sealed class TerrariaProjectileBinding : GlobalProjectile
         if (Main.netMode != Terraria.ID.NetmodeID.SinglePlayer || projectile.owner < 0 || projectile.owner >= Main.maxPlayers) return;
         var player = Main.player[projectile.owner];
         Diagnostics?.Event($"Native payload #{projectile.whoAmI}, age {age}: {payload.Projectiles.Count} child roots");
-        if (player.active) GameplayProjectileAdapter.Emit(payload, projectile.GetSource_FromThis(), player, projectile.Center, direction, Diagnostics, debugVisible, result);
+        if (player.active) GameplayProjectileAdapter.Emit(payload, projectile.GetSource_FromThis(), player, projectile.Center,
+            projectile.velocity.LengthSquared() > .001f ? Vector2.Normalize(projectile.velocity) : direction, Diagnostics, debugVisible, result);
     }
     public override void PostAI(Projectile projectile)
     {
@@ -67,7 +68,7 @@ public sealed class TerrariaProjectileBinding : GlobalProjectile
             Diagnostics?.Event($"Native tile impact #{projectile.whoAmI}, age {age}");
             triggers?.Observe(TriggerSignal.Impact, age, shot => Emit(projectile, shot));
         }
-        return true; // Keep the actual vanilla projectile's tile collision handling.
+        return !Bound || !SpellMotionBinding.TryBounce(projectile, oldVelocity); // Otherwise keep vanilla collision handling.
     }
     public override void OnKill(Projectile projectile, int timeLeft)
     {
@@ -96,7 +97,7 @@ public sealed class TerrariaProjectileBinding : GlobalProjectile
             int frames = Math.Max(1, Main.projFrames[projectile.type]), height = texture.Height / frames;
             var frame = new Rectangle(0, Math.Clamp(projectile.frame, 0, frames - 1) * height, texture.Width, height);
             Main.EntitySpriteDraw(texture, projectile.Center - Main.screenPosition, frame, projectile.GetAlpha(lightColor), projectile.rotation,
-                new Vector2(frame.Width / 2f, frame.Height / 2f), projectile.scale * SpellVisuals.Scale, SpriteEffects.None);
+                new Vector2(frame.Width / 2f, frame.Height / 2f), projectile.scale * SpellVisuals.TerrariaScale, SpriteEffects.None);
         }
         if (evidence != null) evidence.Appearance = drawn ? "Noita sprite with Terraria behavior" : "Terraria sprite and behavior";
         if (debugVisible)

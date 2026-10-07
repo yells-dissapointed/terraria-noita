@@ -2,12 +2,13 @@
 
 Inspected 197 emitted entity paths from 422 spells / 1266 casts. Complete details are in the companion JSON.
 
-- No automatic match: 142 entity paths
-- Candidate only: 32 entity paths
-- Preserve Noita: 17 entity paths
+- No automatic match: 138 entity paths
+- Candidate only: 29 entity paths
+- Preserve Noita: 14 entity paths
 - Implemented prototype: 6 entity paths
+- Implemented custom Noita effect: 10 entity paths
 
-The implemented prototypes reuse real Terraria projectile types. Other matches are candidates requiring custom rules. Black holes and other distinctive Noita effects retain their original artwork/data. Candidate names are suggestions, not claimed equivalents.
+Implemented vanilla prototypes reuse real Terraria projectile types. Implemented custom effects retain Noita artwork and add explicit teleport/terrain/chain/saw rules. Other matches are candidates requiring custom rules. These are bounded adapters, not the complete native Noita engine. Candidate names are suggestions, not claimed equivalents.
 
 | Noita spells | Status | Terraria reuse | Visual policy | Entity |
 | --- | --- | --- | --- | --- |
@@ -31,8 +32,8 @@ The implemented prototypes reuse real Terraria projectile types. Other matches a
 | BALL_LIGHTNING | Candidate only | CultistBossLightningOrbArc | Retain Noita visual | data/entities/projectiles/deck/ball_lightning.xml |
 | BERSERK_FIELD | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/berserk_field.xml |
 | BIG_MAGIC_SHIELD | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/big_magic_shield_start.xml |
-| BLACK_HOLE_BIG | Preserve Noita |  | Retain Noita visual | data/entities/projectiles/deck/black_hole_big.xml |
-| BLACK_HOLE, BLACK_HOLE_DEATH_TRIGGER | Preserve Noita |  | Retain Noita visual | data/entities/projectiles/deck/black_hole.xml |
+| BLACK_HOLE_BIG | Implemented custom Noita effect | Custom BlackHole | Retain Noita visual | data/entities/projectiles/deck/black_hole_big.xml |
+| BLACK_HOLE, BLACK_HOLE_DEATH_TRIGGER | Implemented custom Noita effect | Custom BlackHole | Retain Noita visual | data/entities/projectiles/deck/black_hole.xml |
 | BOMB_DETONATOR | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/bomb_detonator.xml |
 | BOUNCY_ORB, BOUNCY_ORB_TIMER | Candidate only | WaterBolt | Retain Noita visual | data/entities/projectiles/deck/bouncy_orb.xml |
 | BUBBLESHOT, BUBBLESHOT_TRIGGER | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/bubbleshot.xml |
@@ -58,9 +59,9 @@ The implemented prototypes reuse real Terraria projectile types. Other matches a
 | DELAYED_SPELL | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/delayed_spell.xml |
 | DESTRUCTION | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/destruction.xml |
 | DIGGER | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/digger.xml |
-| DISC_BULLET_BIG | Candidate only | LightDisc / DeathSickle | Retain Noita visual | data/entities/projectiles/deck/disc_bullet_big.xml |
-| DISC_BULLET_BIGGER | Candidate only | LightDisc / DeathSickle | Retain Noita visual | data/entities/projectiles/deck/disc_bullet_bigger.xml |
-| DISC_BULLET | Candidate only | LightDisc / DeathSickle | Retain Noita visual | data/entities/projectiles/deck/disc_bullet.xml |
+| DISC_BULLET_BIG | Implemented custom Noita effect | Custom Saw | Retain Noita visual | data/entities/projectiles/deck/disc_bullet_big.xml |
+| DISC_BULLET_BIGGER | Implemented custom Noita effect | Custom Saw | Retain Noita visual | data/entities/projectiles/deck/disc_bullet_bigger.xml |
+| DISC_BULLET | Implemented custom Noita effect | Custom Saw | Retain Noita visual | data/entities/projectiles/deck/disc_bullet.xml |
 | EXPLODING_DUCKS | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/duck.xml |
 | ELECTROCUTION_FIELD | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/electrocution_field.xml |
 | EXPLODING_DEER | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/exploding_deer.xml |
@@ -171,15 +172,15 @@ The implemented prototypes reuse real Terraria projectile types. Other matches a
 | SWARM_FLY | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/swarm_fly.xml |
 | SWARM_WASP | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/swarm_wasp.xml |
 | TELEPORT_CAST | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleport_cast.xml |
-| TELEPORT_PROJECTILE_CLOSER | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_closer.xml |
-| TELEPORT_PROJECTILE_SHORT | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_short.xml |
-| TELEPORT_PROJECTILE_STATIC | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_static.xml |
-| TELEPORT_PROJECTILE | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile.xml |
+| TELEPORT_PROJECTILE_CLOSER | Implemented custom Noita effect | Custom TeleportCloser | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_closer.xml |
+| TELEPORT_PROJECTILE_SHORT | Implemented custom Noita effect | Custom Teleport | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_short.xml |
+| TELEPORT_PROJECTILE_STATIC | Implemented custom Noita effect | Custom Teleport | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile_static.xml |
+| TELEPORT_PROJECTILE | Implemented custom Noita effect | Custom Teleport | Retain Noita visual | data/entities/projectiles/deck/teleport_projectile.xml |
 | TELEPORTATION_FIELD | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/teleportation_field.xml |
 | TEMPORARY_PLATFORM | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/temporary_platform.xml |
 | TEMPORARY_WALL | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/temporary_wall.xml |
 | TENTACLE_PORTAL | Preserve Noita |  | Retain Noita visual | data/entities/projectiles/deck/tentacle_portal.xml |
-| TENTACLE, TENTACLE_TIMER | Preserve Noita |  | Retain Noita visual | data/entities/projectiles/deck/tentacle.xml |
+| TENTACLE, TENTACLE_TIMER | Implemented custom Noita effect | Custom Tentacle | Retain Noita visual | data/entities/projectiles/deck/tentacle.xml |
 | THUNDER_BLAST | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/thunder_blast.xml |
 | DYNAMITE | Candidate only | Bomb / Dynamite | Retain Noita visual | data/entities/projectiles/deck/tnt.xml |
 | TNTBOX_BIG | No automatic match |  | Retain Noita visual | data/entities/projectiles/deck/tntbox_big.xml |

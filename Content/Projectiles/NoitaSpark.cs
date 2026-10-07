@@ -56,7 +56,8 @@ public sealed class NoitaSpark : ModProjectile
         if (Main.netMode != NetmodeID.SinglePlayer || Projectile.owner < 0 || Projectile.owner >= Main.maxPlayers) return;
         var player = Main.player[Projectile.owner];
         trace?.Event($"Payload #{Projectile.whoAmI} fired at age {age}; {payload.Projectiles.Count} child projectile(s)");
-        if (player.active) GameplayProjectileAdapter.Emit(payload, Projectile.GetSource_FromThis(), player, Projectile.Center, direction, trace, debugVisible, liveReport);
+        if (player.active) GameplayProjectileAdapter.Emit(payload, Projectile.GetSource_FromThis(), player, Projectile.Center,
+            Projectile.velocity.LengthSquared() > .001f ? Vector2.Normalize(Projectile.velocity) : direction, trace, debugVisible, liveReport);
     }
     public override void AI()
     {
@@ -64,7 +65,12 @@ public sealed class NoitaSpark : ModProjectile
         Lighting.AddLight(Projectile.Center, chainsaw ? .6f : .5f, .15f, .3f);
         Projectile.rotation = chainsaw ? age * .7f : Projectile.velocity.ToRotation();
         if (!chainsaw) Projectile.velocity.Y += .02f;
-        else if (age <= 8) Dust.NewDust(Projectile.position, Projectile.width, Projectile.height, DustID.Torch, 0, 0, 0, default, .8f);
+        else if (age <= 8)
+        {
+            Dust.NewDust(Projectile.position, Projectile.width, Projectile.height, DustID.Torch, 0, 0, 0, default, .8f);
+            int removed = SpellTerrain.Eat(Projectile, 3);
+            if (removed > 0) trace?.Event($"Chainsaw cut {removed} tile(s); Terraria grid approximation of XML 3-pixel hole");
+        }
     }
     public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
     {
@@ -74,7 +80,7 @@ public sealed class NoitaSpark : ModProjectile
     public override bool OnTileCollide(Vector2 oldVelocity)
     {
         trace?.Event($"Tile impact #{Projectile.whoAmI}, age {age}");
-        triggers?.Observe(TriggerSignal.Impact, age, Emit); return true;
+        triggers?.Observe(TriggerSignal.Impact, age, Emit); return !SpellMotionBinding.TryBounce(Projectile, oldVelocity);
     }
     public override void OnKill(int timeLeft)
     {

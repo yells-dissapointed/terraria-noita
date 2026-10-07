@@ -44,6 +44,7 @@ public static class VisualProjectileAdapter
             if (id < 0 || id >= Main.maxProjectiles) { result.Trace.Event("Visual spawn failed: projectile slots full"); continue; }
             var projectile = Main.projectile[id]; projectile.timeLeft = life;
             ((NoitaVisualProjectile)projectile.ModProjectile).Configure(node, profile, direction, result, evidence);
+            projectile.GetGlobalProjectile<SpellMotionBinding>().Configure(shot, result.Trace, evidence);
             evidence.ProjectileId = id; result.VisualEntities.Add(evidence); count++;
             result.Trace.Event($"Visual entity {System.IO.Path.GetFileName(node.Entity)} #{id}: {evidence.Appearance}; life {life}; native gameplay deferred");
         }

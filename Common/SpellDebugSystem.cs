@@ -49,6 +49,7 @@ public sealed class SpellDebugSystem : ModSystem
                     $"{(wand.FixedSpell ? "Fixed" : "Next")} {sequence.Index + 1}/{sequence.Total}: {sequence.Spell} / {sequence.Current().Context}";
                 string text = BuildIdentity.Label(Mod) + "\nSpell debug wand | " + (wand.Automatic ? "AUTO" : "MANUAL") + " | " + next +
                     (wand.FixedSpell ? "\nLeft: repeat fixed spell | Right: controls\n" : "\nLeft: test next | Right: controls\n") + wand.Status;
+                if (wand.ModifierCards.Length > 0) text += "\nModifiers: " + string.Join(" + ", wand.ModifierCards);
                 if (wand.LastTrace is { Lines.Count: > 0 } trace) text += "\n" + trace.Lines[^1];
                 Utils.DrawBorderString(Main.spriteBatch, text, new Vector2(20, 100), Color.Cyan, .65f);
             }

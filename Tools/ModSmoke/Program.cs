@@ -89,6 +89,10 @@ debugType.GetMethod("ChangeVisualization")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeContext")!.Invoke(debugWand, null);
 debugType.GetMethod("ChangeInterval")!.Invoke(debugWand, null);
 debugType.GetMethod("ToggleFixedSpell")!.Invoke(debugWand, null);
+debugType.GetMethod("ChangeMovement")!.Invoke(debugWand, null);
+debugType.GetMethod("ChangeTracking")!.Invoke(debugWand, null);
+debugType.GetMethod("ChangeSpeed")!.Invoke(debugWand, null);
+debugType.GetMethod("ToggleBounce")!.Invoke(debugWand, null);
 object debugTag = Activator.CreateInstance(tagType)!; debugType.GetMethod("SaveData")!.Invoke(debugWand, new[] { debugTag });
 object debugRestored = Activator.CreateInstance(debugType)!; debugType.GetMethod("LoadData")!.Invoke(debugRestored, new[] { debugTag });
 if ((int)debugType.GetProperty("Interval")!.GetValue(debugRestored)! != 300 ||
@@ -97,6 +101,10 @@ if ((int)debugType.GetProperty("Interval")!.GetValue(debugRestored)! != 300 ||
     (bool)debugType.GetProperty("VisualPreview")!.GetValue(debugRestored)! ||
     !(bool)debugType.GetProperty("FixedSpell")!.GetValue(debugRestored)!) throw new Exception("Debug wand save/load changes controls or resumes automatic firing");
 Console.WriteLine("PASS: debug wand defaults to harmless preview, saves fixed/cycle controls and loads with auto firing stopped");
+if ((int)debugType.GetProperty("Movement")!.GetValue(debugRestored)! != 1 || (int)debugType.GetProperty("Tracking")!.GetValue(debugRestored)! != 1 ||
+    (int)debugType.GetProperty("Speed")!.GetValue(debugRestored)! != 1 || !(bool)debugType.GetProperty("Bounce")!.GetValue(debugRestored)! ||
+    !((string[])debugType.GetProperty("ModifierCards")!.GetValue(debugRestored)!).SequenceEqual(new[] { "SINEWAVE", "HOMING", "SPEED", "BOUNCE" })) throw new Exception("Debug modifier controls lost on save/load");
+Console.WriteLine("PASS: actual debug item saves and restores the combined movement, tracking, speed and bounce recipe");
 object debugReport = debugType.GetProperty("Report")!.GetValue(debugWand)!;
 var liveCases = (System.Collections.IList)debugReport.GetType().GetProperty("Cases")!.GetValue(debugReport)!;
 liveCases.Add(Activator.CreateInstance(mod.GetType("terrarianoita.Core.SpellLiveCase")!)!);
@@ -160,7 +168,7 @@ parameters[0].ParameterType.GetProperty("Entity")!.SetValue(bombNode, "data/enti
 ((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(nativeTree)!).Add(bombNode);
 gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree });
 object unsupported = Activator.CreateInstance(parameters[0].ParameterType)!;
-parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/black_hole.xml");
+parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/megalaser.xml");
 object nested = Activator.CreateInstance(triggerType)!;
 object payload = triggerType.GetProperty("Payload")!.GetValue(nested)!;
 ((System.Collections.IList)shotType.GetProperty("Projectiles")!.GetValue(payload)!).Add(unsupported);
@@ -170,4 +178,49 @@ try { gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree }); }
 catch (TargetInvocationException e) when (e.InnerException is NotSupportedException) { rejectedTree = true; }
 if (!rejectedTree) throw new Exception("Ordinary wand can partially emit a tree containing unsupported native payloads");
 Console.WriteLine("PASS: ordinary gameplay accepts mapped Bomb but rejects an unsupported nested payload before emission");
+var effectType = mod.GetType("terrarianoita.Content.Projectiles.NoitaEffectProjectile")!;
+var effectSettingsType = mod.GetType("terrarianoita.Core.SpellEffectProfile")!;
+var kindType = mod.GetType("terrarianoita.Core.NoitaEffectKind")!;
+foreach (string kind in new[] { "Teleport", "TeleportCloser", "BlackHole", "Tentacle", "Saw" })
+{
+    object effect = Activator.CreateInstance(effectType)!;
+    object effectProjectile = Activator.CreateInstance(entity.PropertyType)!; entity.SetValue(effect, effectProjectile);
+    effectType.GetMethod("SetDefaults")!.Invoke(effect, null);
+    ptype.GetField("active")!.SetValue(effectProjectile, true); ptype.GetField("damage")!.SetValue(effectProjectile, 20);
+    ptype.GetField("timeLeft")!.SetValue(effectProjectile, 60);
+    object settings = Activator.CreateInstance(effectSettingsType)!; effectSettingsType.GetProperty("Kind")!.SetValue(settings, Enum.Parse(kindType, kind));
+    effectType.GetMethod("Configure")!.Invoke(effect, new object?[] { node, settings, direction, null, liveCase, visualEvidence, false });
+    bool nonCombat = kind is "Teleport" or "TeleportCloser" or "BlackHole";
+    if ((bool)ptype.GetField("friendly")!.GetValue(effectProjectile)! == nonCombat ||
+        nonCombat && !false.Equals(effectType.GetMethod("CanDamage")!.Invoke(effect, null)) ||
+        (bool)effectType.GetMethod("ShouldUpdatePosition")!.Invoke(effect, null)! != (kind != "Tentacle")) throw new Exception("Effect combat or position flags wrong: " + kind);
+    if (kind == "Saw")
+    {
+        var rectType = effectType.GetMethod("Colliding")!.GetParameters()[0].ParameterType;
+        object hitbox = Activator.CreateInstance(rectType, new object[] { -4, -4, 8, 8 })!;
+        object effectCenter = ptype.GetProperty("Center")!.GetValue(effectProjectile)!;
+        int cx = (int)(float)effectCenter.GetType().GetField("X")!.GetValue(effectCenter)!;
+        int cy = (int)(float)effectCenter.GetType().GetField("Y")!.GetValue(effectCenter)!;
+        object near = Activator.CreateInstance(rectType, new object[] { cx - 1, cy - 1, 2, 2 })!;
+        int radius = (int)ptype.GetField("width")!.GetValue(effectProjectile)! / 2;
+        object corner = Activator.CreateInstance(rectType, new object[] { cx + radius - 1, cy + radius - 1, 1, 1 })!;
+        if (!true.Equals(effectType.GetMethod("Colliding")!.Invoke(effect, new[] { hitbox, near })) ||
+            !false.Equals(effectType.GetMethod("Colliding")!.Invoke(effect, new[] { hitbox, corner }))) throw new Exception("Saw collision hits outside its circular sprite");
+    }
+    effectType.GetMethod("RemoveForDebug")!.Invoke(effect, null);
+    // OnKill after cancellation must return before accessing world/player state or dispatching callbacks.
+    effectType.GetMethod("OnKill")!.Invoke(effect, new object[] { 0 });
+    if ((bool)ptype.GetField("active")!.GetValue(effectProjectile)! || (int)ptype.GetField("damage")!.GetValue(effectProjectile)! != 0 ||
+        effectType.GetField("triggers", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(effect) != null) throw new Exception("Custom cleanup keeps effects/payloads: " + kind);
+}
+Console.WriteLine("PASS: every custom effect configures combat/position flags and cleanup cancels teleport/death callbacks");
+parameters[0].ParameterType.GetProperty("Entity")!.SetValue(unsupported, "data/entities/projectiles/deck/black_hole.xml");
+gameplay.GetMethod("Validate")!.Invoke(null, new[] { nativeTree });
+Console.WriteLine("PASS: ordinary wand accepts custom black-hole payloads atomically alongside native Bomb");
+object unboundMotion = Activator.CreateInstance(mod.GetType("terrarianoita.Common.SpellMotionBinding")!)!;
+var velocityField = ptype.GetField("velocity")!; object untouchedVelocity = Activator.CreateInstance(velocityField.FieldType, new object[] { 2f, 3f })!;
+velocityField.SetValue(nativeProjectile, untouchedVelocity);
+unboundMotion.GetType().GetMethod("PostAI")!.Invoke(unboundMotion, new[] { nativeProjectile });
+if (!untouchedVelocity.Equals(velocityField.GetValue(nativeProjectile))) throw new Exception("Unbound vanilla projectile movement changed");
+Console.WriteLine("PASS: unbound vanilla projectile movement remains untouched");
 return 0;

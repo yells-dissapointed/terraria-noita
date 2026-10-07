@@ -7,7 +7,7 @@ namespace terrarianoita.Core;
 public enum TerrariaSpellPrototype { None, Bomb, Arrow, Bullet, Rocket }
 public sealed record TerrariaSpellMatch(string Status, string TerrariaProjectile, TerrariaSpellPrototype Prototype, bool UseNoitaSprite, string Notes)
 {
-    public bool Implemented => Prototype != TerrariaSpellPrototype.None;
+    public bool Implemented => Prototype != TerrariaSpellPrototype.None || Status == "Implemented custom Noita effect";
 }
 
 /// <summary>Explicit prototype matches, not an assertion that similarly named spells are equivalent.</summary>
@@ -15,6 +15,8 @@ public static class TerrariaSpellMatches
 {
     public static TerrariaSpellMatch Find(string entity)
     {
+        if (SpellEffectProfile.Supports(entity)) return new("Implemented custom Noita effect", "Custom " + SpellEffectProfile.KindFor(entity), TerrariaSpellPrototype.None, true,
+            "Original Noita visual data and explicit custom gameplay adapter. Prototype physics/material fidelity requires in-game validation.");
         if (entity == "data/entities/projectiles/bomb.xml") return new("Implemented prototype", "Bomb", TerrariaSpellPrototype.Bomb, false,
             "Native timed bomb, bounce, damage and terrain explosion. XML fuse/damage and wand speed/lifetime are mapped; Noita physics/materials remain different.");
         if (entity == "data/entities/projectiles/deck/arrow.xml") return new("Implemented prototype", "WoodenArrowFriendly", TerrariaSpellPrototype.Arrow, false,

@@ -77,6 +77,7 @@ public sealed class NoitaVisualProjectile : ModProjectile
     {
         result?.Trace.Event($"Visual tile impact #{Projectile.whoAmI}, age {age}");
         triggers?.Observe(TriggerSignal.Impact, age, Emit);
+        if (SpellMotionBinding.TryBounce(Projectile, oldVelocity)) return false;
         if (bounces-- > 0)
         {
             if (Projectile.velocity.X != oldVelocity.X) Projectile.velocity.X = -oldVelocity.X;
