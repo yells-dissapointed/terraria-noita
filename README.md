@@ -1,4 +1,4 @@
-# Terraria Noita — v0.8.0
+# Terraria Noita — v0.8.1
 
 This single-player tModLoader mod executes the original wand Lua from your own
 extracted Noita installation and translates the resulting casts into Terraria
@@ -9,11 +9,17 @@ v0.8.0 adds a shared XML gameplay interpreter, persisted custom materials,
 refillable mixed-liquid flasks, randomized/shuffle casts and a larger debug kit.
 It is a substantial playable adaptation, not the native Noita engine.
 
+**v0.8.1 fixes a startup failure in v0.8.0:** the new flask and worm names used
+invalid inline HJSON. Their localization blocks now use separate lines, and the
+packaged-mod checks run tModLoader's actual localization loader. Gameplay is
+unchanged from v0.8.0.
+
 ## Install the built mod
 
 1. In tModLoader, choose **Mods → Open Mods Folder**, then close the game.
 2. Replace `terrarianoita.tmod` in that folder with the new build. Restart
-   tModLoader and enable **Terraria Noita 0.8.0**.
+   tModLoader and enable **Terraria Noita 0.8.1**. If v0.8.0 failed to load,
+   re-enable the mod (and any dependents you use), then choose **Reload Mods**.
 3. Keep **Extracted Noita folder** pointed at your existing extracted files.
    The setting accepts the extracted root, `data`, `scripts`, `gun`, or `gun.lua`.
 4. Enter a single-player world and type **`/noita kit`** in chat. This gives the
@@ -152,6 +158,7 @@ inheritance and conservation. Packaged reflection checks exercise actual
 preview and cleanup. There is no graphical Terraria client in the build
 environment: this release still needs in-game visual/combat/terrain validation.
 
-Release validation: **1,041 standalone checks** and **25 packaged-mod checks**
-passed, in addition to the 1,266-case coverage audit above. The packaged version
-is checked against its compiled build identity to catch stale installations.
+The v0.8.0 gameplay baseline passed **1,041 standalone checks** and the coverage
+audit above. The v0.8.1 packaged checks additionally load the embedded HJSON through
+tModLoader and verify the complete flask, wand, NPC and configuration keys.
+The packaged version is checked against its compiled build identity.

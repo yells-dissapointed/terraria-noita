@@ -1,4 +1,4 @@
 displayName = Terraria Noita
 author = yells-dissapointed
-version = 0.8.0
+version = 0.8.1
 buildIgnore = .git/*, .vs/*, Tools/*, Native/build/*, LocalData/*, bin/*, obj/*, README.md, DEBUG_WAND.md, SPELL_AUDIT.md, TERRARIA_MATCHES.md, EXPANSION_COVERAGE.md, Native/README.md

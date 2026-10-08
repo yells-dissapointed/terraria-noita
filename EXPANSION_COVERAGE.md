@@ -1,5 +1,8 @@
 # Expansion coverage
 
+This v0.8.0 gameplay audit also applies to v0.8.1, which only fixes localization
+loading and adds a packaged localization regression check.
+
 Build 0.8.0: 1263/1266 reference casts completed; 421/422 cards passed all three Lua contexts.
 
 200/201 emitted entity paths have a live adapter; preview-only paths: 1. 466 material definitions and 102 liquids imported.

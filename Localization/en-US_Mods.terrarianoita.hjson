@@ -1,6 +1,10 @@
 Items: {
-    MaterialFlask: { DisplayName: Material Flask }
-    DebugMaterialFlask: { DisplayName: Debug Material Flask }
+    MaterialFlask: {
+        DisplayName: Material Flask
+    }
+    DebugMaterialFlask: {
+        DisplayName: Debug Material Flask
+    }
     SpellDebugWand: {
         DisplayName: Spell Debug Wand
         Tooltip:
@@ -33,4 +37,8 @@ Configs: {
     }
 }
 
-NPCs: { NoitaRainWorm: { DisplayName: Noita Rain Worm } }
+NPCs: {
+    NoitaRainWorm: {
+        DisplayName: Noita Rain Worm
+    }
+}

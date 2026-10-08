@@ -28,6 +28,36 @@ var paths = Directory.GetFiles(root, "*.dll", SearchOption.AllDirectories)
     .Where(p => !p.Replace('\\', '/').Contains("/Native/") && !p.EndsWith(".resources.dll"))
     .GroupBy(Path.GetFileNameWithoutExtension).ToDictionary(g => g.Key!, g => g.First());
 context.Resolving += (_, name) => paths.TryGetValue(name.Name!, out var path) ? context.LoadFromAssemblyPath(path) : null;
+// Compilation does not parse localization. Exercise the same packaged-file loader
+// used during Mod.Autoload, including filename prefixes and flattened keys.
+var loaderAssembly = context.LoadFromAssemblyPath(Path.Combine(root, "tModLoader.dll"));
+var archiveType = loaderAssembly.GetType("Terraria.ModLoader.Core.TmodFile")!;
+var cultureType = loaderAssembly.GetType("Terraria.Localization.GameCulture")!;
+object archive = Activator.CreateInstance(archiveType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+    null, new object?[] { Path.GetFullPath(args[0]), null, null }, null)!;
+using (var archiveScope = (IDisposable)archiveType.GetMethod("Open", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(archive, null)!)
+{
+    var fromCulture = cultureType.GetMethod("FromCultureName")!;
+    object english = fromCulture.Invoke(null, new[] { Enum.Parse(fromCulture.GetParameters()[0].ParameterType, "English") })!;
+    var loadTranslations = loaderAssembly.GetType("Terraria.ModLoader.LocalizationLoader")!.GetMethod("LoadTranslations",
+        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { archiveType, cultureType }, null)!;
+    var translations = ((IEnumerable<(string key, string value)>)loadTranslations.Invoke(null, new[] { archive, english })!)
+        .ToDictionary(t => t.key, t => t.value);
+    foreach (var expected in new[] {
+        ("Items.MaterialFlask.DisplayName", "Material Flask"),
+        ("Items.DebugMaterialFlask.DisplayName", "Debug Material Flask"),
+        ("Items.SpellDebugWand.DisplayName", "Spell Debug Wand"),
+        ("Items.NoitaWand.DisplayName", "Noita Wand"),
+        ("NPCs.NoitaRainWorm.DisplayName", "Noita Rain Worm"),
+        ("Configs.NoitaConfig.DisplayName", "Noita compatibility"),
+        ("Configs.NoitaConfig.ExtractedDataRoot.Label", "Extracted Noita folder") })
+        if (!translations.TryGetValue("Mods." + modName + "." + expected.Item1, out var value) || value != expected.Item2)
+            throw new Exception("Packaged localization is missing or corrupt: " + expected.Item1);
+    foreach (string key in new[] { "Items.SpellDebugWand.Tooltip", "Items.NoitaWand.Tooltip", "Configs.NoitaConfig.ExtractedDataRoot.Tooltip" })
+        if (!translations.TryGetValue("Mods." + modName + "." + key, out var value) || string.IsNullOrWhiteSpace(value))
+            throw new Exception("Packaged localization is missing tooltip: " + key);
+    Console.WriteLine($"PASS: tModLoader loads packaged HJSON and resolves all {translations.Count} expected localization keys");
+}
 var mod = context.LoadFromStream(new MemoryStream(bytes));
 var stamp = mod.GetType("terrarianoita.Core.BuildStamp")!;
 if (packageVersion != (string)stamp.GetField("Version")!.GetRawConstantValue()!) throw new Exception("Package version differs from compiled build stamp");
