@@ -14,7 +14,7 @@ public sealed class NoitaCommand : ModCommand
 {
     public override string Command => "noita";
     public override CommandType Type => CommandType.Chat;
-    public override string Usage => "/noita kit | spell ID | material NAME | liquids [filter] | fill NAME | status | clearliquids";
+    public override string Usage => "/noita kit | spell ID | material NAME | liquids [filter] | fill NAME | probe | reactions A B | status | clearliquids";
     public override string Description => "Noita development kit, spell selection and liquid controls";
     public override void Action(CommandCaller caller, string input, string[] args)
     {
@@ -45,8 +45,20 @@ public sealed class NoitaCommand : ModCommand
                     else if (action == "fill" && player.HeldItem.ModItem is MaterialFlask flask) flask.Fill(name);
                     else { caller.Reply("Hold the debug flask to select a material, or /noita fill NAME with a normal flask for test contents."); break; }
                     caller.Reply("Selected " + name, Color.Cyan); break;
-                case "clearliquids": world.ClearWorld(); caller.Reply("Cleared imported material cells. Vanilla water/lava/honey/shimmer remain."); break;
-                case "status": caller.Reply(BuildIdentity.Label(Mod)); caller.Reply($"{world.Catalog.Materials.Count} material definitions; {world.Catalog.Liquids.Length} liquids; {world.Grid.Count} active imported cells / {world.Grid.Volume} units."); break;
+                case "probe":
+                    int x=(int)(Main.MouseWorld.X/16),y=(int)(Main.MouseWorld.Y/16);
+                    caller.Reply($"Cell {x},{y}: {world.Grid.AmountAt(x,y)}/255 shared units (excess is retained pressure)");
+                    foreach(var layer in world.Grid.LayersAt(x,y).OrderByDescending(c=>MaterialGrid.Density(world.Catalog.Get(c.Material)))) caller.Reply($"{layer.Material}: {layer.Amount}, density {world.Catalog.Get(layer.Material).Density:0.##}",Color.Cyan);
+                    if(WorldGen.InWorld(x,y,2)&&Main.tile[x,y].LiquidAmount>0)caller.Reply($"Native liquid: type {Main.tile[x,y].LiquidType}, {Main.tile[x,y].LiquidAmount} units");
+                    caller.Reply("Last reaction: "+world.Chemistry.LastReaction);break;
+                case "reactions":
+                    if(args.Length<3){caller.Reply("Example: /noita reactions water radioactive_liquid");break;}
+                    var reactions=world.Chemistry.Available(args[1].ToLowerInvariant(),args[2].ToLowerInvariant());
+                    if(reactions.Length==0)caller.Reply("No active binary recipe for that pair. They still share space and settle by density.");
+                    foreach(var reaction in reactions.Take(12))caller.Reply($"{reaction.Id}: {reaction.OutputA} + {reaction.OutputB} ({reaction.Probability:0.#}% per contact check; {(reaction.Adapted?"adapted":"imported")})",Color.Cyan);break;
+                case "clearliquids": world.ClearCustomLiquids(); caller.Reply("Cleared custom materials; captured native liquids are retained and released as space permits."); break;
+                case "status": caller.Reply(BuildIdentity.Label(Mod)); caller.Reply($"{world.Catalog.ImportedCount} imported + 1 adapted material; {world.Catalog.Liquids.Length} liquids; {world.Grid.Count} cells / {world.Grid.Volume} units.");
+                    caller.Reply($"{world.Chemistry.ImportedDefinitions} reaction definitions; {world.Chemistry.EligibleDefinitions} binary candidates (pair/output checks also apply); {world.Chemistry.ReactionsApplied} applied.");break;
                 default: caller.Reply(Usage, Color.Cyan); break;
             }
         }

@@ -1,7 +1,8 @@
 # Expansion coverage
 
-This v0.8.0 gameplay audit also applies to v0.8.1, which only fixes localization
-loading and adds a packaged localization regression check.
+This is the v0.8.0 spell-cast baseline, retained through the v0.8.1 localization
+fix. v0.9.0 changes the material solver and reactions; see LIQUIDS.md and the
+separate fluid report for current material coverage. Spell mappings are unchanged.
 
 Build 0.8.0: 1263/1266 reference casts completed; 421/422 cards passed all three Lua contexts.
 

@@ -1,4 +1,4 @@
-# Terraria Noita — v0.8.1
+# Terraria Noita — v0.9.0
 
 This single-player tModLoader mod executes the original wand Lua from your own
 extracted Noita installation and translates the resulting casts into Terraria
@@ -9,16 +9,18 @@ v0.8.0 adds a shared XML gameplay interpreter, persisted custom materials,
 refillable mixed-liquid flasks, randomized/shuffle casts and a larger debug kit.
 It is a substantial playable adaptation, not the native Noita engine.
 
-**v0.8.1 fixes a startup failure in v0.8.0:** the new flask and worm names used
-invalid inline HJSON. Their localization blocks now use separate lines, and the
-packaged-mod checks run tModLoader's actual localization loader. Gameplay is
-unchanged from v0.8.0.
+**v0.9.0 replaces the stacking liquid model.** Materials now share each cell's
+capacity, settle by imported density and exchange equal volumes. The reaction
+importer reads 325 original recipes: 228 fit the basic binary format, and 203
+have supported ingredient/product matches in the supplied data. Other recipes
+remain deferred. Optional adapted reactions add acid dilution, extinguishing
+and fallback ignition. The v0.8.1 localization fix and loader check remain.
 
 ## Install the built mod
 
 1. In tModLoader, choose **Mods → Open Mods Folder**, then close the game.
 2. Replace `terrarianoita.tmod` in that folder with the new build. Restart
-   tModLoader and enable **Terraria Noita 0.8.1**. If v0.8.0 failed to load,
+   tModLoader and enable **Terraria Noita 0.9.0**. If an earlier version failed to load,
    re-enable the mod (and any dependents you use), then choose **Reload Mods**.
 3. Keep **Extracted Noita folder** pointed at your existing extracted files.
    The setting accepts the extracted root, `data`, `scripts`, `gun`, or `gun.lua`.
@@ -48,11 +50,17 @@ see [Native/README.md](Native/README.md).
   angular paths, cursor/enemy/caster homing, piercing, phasing, freezing,
   electricity, material trails, matter eating, damage fields and selected
   conversion/shield/lifetime effects. See coverage data for deferred extras.
-- **Materials:** 466 imported definitions, including 102 scoopable liquids with
-  inherited names, colors and status metadata. Native water/lava/honey/shimmer
-  use Terraria liquid simulation. Other fluids use saved, flowing tile cells.
-  Selected reactions include ignition, water extinguishing and acid corrosion.
-  Material identity is imported more broadly than chemical behavior.
+- **Materials:** 466 imported definitions plus adapted diluted acid; 103
+  scoopable liquids in total. Mixed cells share 255 units, so partial layers
+  fit together instead of occupying separate blocks. Denser liquids sink and
+  gases rise through liquid. Native water/lava/honey join the shared solver at
+  custom-fluid contacts and return to Terraria when isolated. Shimmer stays
+  native and is excluded from mixing. See [LIQUIDS.md](LIQUIDS.md).
+- **Chemistry:** supported two-ingredient Noita recipes execute on contact,
+  including radioactive-water purification, mana-potion propagation,
+  invisibility-potion dilution, blood/poison conversion and steam condensation.
+  **Adapted liquid reactions** in settings controls the additional recipes.
+  Reaction rates and processed volumes are adapted to tiles, not pixel-exact.
 - **Flasks:** 1,000-unit capacity, mixed contents, hold right-click to scoop and
   hold left-click to pour near the cursor. Only accepted amounts transfer;
   full or blocked pours retain the rest. Contents survive saving and cloning.
@@ -91,7 +99,9 @@ The debug kit supports these chat commands:
 | `/noita material oil` | Select any imported liquid in the debug flask |
 | `/noita fill acid` | Give the held normal flask test contents |
 | `/noita status` | Show build, material counts and active custom cells |
-| `/noita clearliquids` | Clear custom cells; native Terraria liquids remain |
+| `/noita probe` | Inspect the cell under the cursor, its layers and last reaction |
+| `/noita reactions water radioactive_liquid` | Explain active recipes for a pair |
+| `/noita clearliquids` | Remove custom materials and retain captured native fluid |
 
 The debug flask creates liquid on left-click and cycles a common material list
 on right-click. The normal flask scoops existing custom or native liquid.
@@ -122,8 +132,14 @@ secondary scripted behavior. Reports retain these gaps explicitly.
 
 The adapters use 25 Terraria HP per Noita damage unit. They preserve Terraria's
 protected/important tiles. Custom materials use 16-pixel cells with 255 units per
-cell, at most 32,768 cells, and bounded update work. They do not implement Noita's
-pixel chemistry or seamless mixing with native liquids. Statuses use Terraria
+cell, at most 32,768 cells and 16 ingredients per cell, with bounded update work.
+External native-fluid incursions retain overflow under pressure (up to 65,535
+units per cell) until space opens. Existing v0.8 world/flask records load without
+losing quantities. Mixtures and overflow are included in the new save records.
+This does not implement Noita's pixel physics, temperature system or complete
+chemistry. Solid-changing, directional, blob, timed, three-input and entity-
+producing recipes remain deferred. Mixed native pools use adapted contact
+statuses while in the shared solver. Statuses use Terraria
 buffs where possible. NPC polymorph becomes a temporary bunny; player polymorph
 is temporary curse/weakness rather than a sheep body. Egg creatures use Terraria
 slimes. Worm body segments are visual, with head contact damage. Shields and
@@ -149,6 +165,7 @@ dotnet run --project Tools/AdapterSmoke -- Native/terrarianoita_lua51.dll C:/Noi
 dotnet run --project Tools/SpellAudit -- Native/terrarianoita_lua51.dll C:/Noita-extracted Compatibility/bridge.lua spell-audit.json
 dotnet run --project Tools/ExpansionAudit -- C:/Noita-extracted spell-audit.json expansion-coverage.json
 dotnet run --project Tools/ModSmoke -- C:/path/to/terrarianoita.tmod C:/path/to/tModLoader
+dotnet run --project Tools/FluidSmoke -- C:/Noita-extracted fluid-report.json
 ```
 
 On Linux substitute `Native/libterrarianoita_lua51.so`. The standalone checks
@@ -158,7 +175,9 @@ inheritance and conservation. Packaged reflection checks exercise actual
 preview and cleanup. There is no graphical Terraria client in the build
 environment: this release still needs in-game visual/combat/terrain validation.
 
-The v0.8.0 gameplay baseline passed **1,041 standalone checks** and the coverage
-audit above. The v0.8.1 packaged checks additionally load the embedded HJSON through
-tModLoader and verify the complete flask, wand, NPC and configuration keys.
-The packaged version is checked against its compiled build identity.
+Validation includes the original-script checks, dedicated mixed-fluid tests and
+packaged item/world persistence checks. The packaged HJSON is loaded through
+tModLoader and all expected item, NPC and configuration keys are verified.
+The package version is checked against its compiled build identity. Fluid tests
+cover reversed layers, partial-cell stacking, native overflow, per-material
+conservation over 600 frames, mixture sampling and actual imported recipes.

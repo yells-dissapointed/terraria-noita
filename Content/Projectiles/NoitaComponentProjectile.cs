@@ -260,7 +260,7 @@ public sealed class NoitaComponentProjectile : ModProjectile
             foreach (var cell in world.Grid.Cells.Where(c => Vector2.DistanceSquared(Projectile.Center, new Vector2(c.X * 16 + 8, c.Y * 16 + 8)) < 64 * 64).Take(16).ToArray())
             {
                 var meta = world.Catalog.Get(cell.Material); if (name == "vacuum_liquid" ? !meta.Scoopable : !meta.Sand) continue;
-                int amount = world.Grid.Take(cell.X, cell.Y, Math.Min(capacity, 128)); if (amount == 0) continue;
+                int amount = world.Grid.Take(cell.X, cell.Y, Math.Min(capacity, 128),cell.Material); if (amount == 0) continue;
                 vacuum[cell.Material] = vacuum.GetValueOrDefault(cell.Material) + amount; capacity -= amount;
             }
         }

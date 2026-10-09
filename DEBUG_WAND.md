@@ -1,6 +1,6 @@
-# v0.8.1 playtest and reporting
+# v0.9.0 playtest and reporting
 
-Install `terrarianoita.tmod`, confirm **0.8.1** in its tooltip, and type
+Install `terrarianoita.tmod`, confirm **0.9.0** in its tooltip, and type
 `/noita kit`. Keep the existing extracted Noita folder setting.
 
 Use a test world for the live effect pass: the requested live mechanics include
@@ -60,7 +60,11 @@ For a failure, save the report immediately after repeating one fixed spell.
 Include the spell ID, mode, context, selected modifiers and whether the problem
 was visual, contact/damage, movement, resource cost or persistence. A short
 screen recording is useful for aiming and animation issues. Report the loaded
-file path if the tooltip does not show 0.8.1.
+file path if the tooltip does not show 0.9.0.
+
+For liquid stacking or chemistry, follow [LIQUIDS.md](LIQUIDS.md). Include
+`/noita probe` output, the two liquid names, pour order and whether the basin
+originally contained native Terraria water/lava/honey.
 
 The bundled coverage file is an automated import/cast inventory. It does not
 substitute for in-game checks. `ALL_SPELLS` explicitly reports its unported world

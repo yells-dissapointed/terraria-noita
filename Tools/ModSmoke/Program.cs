@@ -50,10 +50,11 @@ using (var archiveScope = (IDisposable)archiveType.GetMethod("Open", BindingFlag
         ("Items.NoitaWand.DisplayName", "Noita Wand"),
         ("NPCs.NoitaRainWorm.DisplayName", "Noita Rain Worm"),
         ("Configs.NoitaConfig.DisplayName", "Noita compatibility"),
+        ("Configs.NoitaConfig.AdaptedLiquidReactions.Label", "Adapted liquid reactions"),
         ("Configs.NoitaConfig.ExtractedDataRoot.Label", "Extracted Noita folder") })
         if (!translations.TryGetValue("Mods." + modName + "." + expected.Item1, out var value) || value != expected.Item2)
             throw new Exception("Packaged localization is missing or corrupt: " + expected.Item1);
-    foreach (string key in new[] { "Items.SpellDebugWand.Tooltip", "Items.NoitaWand.Tooltip", "Configs.NoitaConfig.ExtractedDataRoot.Tooltip" })
+    foreach (string key in new[] { "Items.SpellDebugWand.Tooltip", "Items.NoitaWand.Tooltip", "Configs.NoitaConfig.ExtractedDataRoot.Tooltip", "Configs.NoitaConfig.AdaptedLiquidReactions.Tooltip" })
         if (!translations.TryGetValue("Mods." + modName + "." + key, out var value) || string.IsNullOrWhiteSpace(value))
             throw new Exception("Packaged localization is missing tooltip: " + key);
     Console.WriteLine($"PASS: tModLoader loads packaged HJSON and resolves all {translations.Count} expected localization keys");
@@ -271,6 +272,32 @@ object clonedContents=flaskType.GetProperty("Contents")!.GetValue(clonedFlask)!;
 contentsType.GetMethod("Remove")!.Invoke(clonedContents,new object[]{"oil",400});
 if((int)contentsType.GetProperty("Total")!.GetValue(contents)! !=1000)throw new Exception("Cloned flask aliases original liquid quantities");
 Console.WriteLine("PASS: actual flask clone owns independent contents");
+var worldType=mod.GetType("terrarianoita.Common.MaterialWorld")!;
+var materialGridType=mod.GetType("terrarianoita.Core.MaterialGrid")!;
+{
+    object world=Activator.CreateInstance(worldType)!;
+    object worldGrid=worldType.GetProperty("Grid")!.GetValue(world)!;
+    var add=materialGridType.GetMethod("Add")!;Func<int,int,bool> openCell=(_,_)=>false;
+    add.Invoke(worldGrid,new object[]{10,10,"water",90,openCell,false});
+    add.Invoke(worldGrid,new object[]{10,10,"oil",80,openCell,false});
+    add.Invoke(worldGrid,new object[]{11,10,"water",400,openCell,true});
+    object worldTag=Activator.CreateInstance(tagType)!;worldType.GetMethod("SaveWorldData")!.Invoke(world,new[]{worldTag});
+    Func<int,int,bool> worldBounds=(x,y)=>x<2||y<2||x>=62||y>=62;
+    object loadedGrid=worldType.GetMethod("RestoreGrid")!.Invoke(null,new object[]{worldTag,worldBounds})!;
+    int Stored(object grid,int x,int y,string name)=>(int)materialGridType.GetMethod("AmountOf")!.Invoke(grid,new object[]{x,y,name})!;
+    if(Stored(loadedGrid,10,10,"water")!=90||Stored(loadedGrid,10,10,"oil")!=80||Stored(loadedGrid,11,10,"water")!=400||
+       (long)materialGridType.GetProperty("Volume")!.GetValue(loadedGrid)! !=570)throw new Exception("World mixture or retained native pressure lost on save/load");
+    Console.WriteLine("PASS: actual world TagCompound preserves mixed cells and retained native overflow");
+    var tagIndex=tagType.GetProperty("Item")!;
+    object oldCell=Activator.CreateInstance(tagType)!;
+    foreach(var pair in new Dictionary<string,object>{{"x",12},{"y",14},{"material","oil"},{"amount",120}})
+        tagIndex.SetValue(oldCell,pair.Value,new object[]{pair.Key});
+    var oldCells=(System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tagType))!;oldCells.Add(oldCell);
+    object legacyTag=Activator.CreateInstance(tagType)!;tagIndex.SetValue(legacyTag,oldCells,new object[]{"noita_materials"});
+    loadedGrid=worldType.GetMethod("RestoreGrid")!.Invoke(null,new object[]{legacyTag,worldBounds})!;
+    if(Stored(loadedGrid,12,14,"oil")!=120||(long)materialGridType.GetProperty("Volume")!.GetValue(loadedGrid)! !=120)throw new Exception("Legacy single-material world record failed migration");
+    Console.WriteLine("PASS: old v0.8 world records load with their exact material quantity and position");
+}
 var componentType=mod.GetType("terrarianoita.Content.Projectiles.NoitaComponentProjectile")!;
 object component=Activator.CreateInstance(componentType)!;object componentProjectile=Activator.CreateInstance(entity.PropertyType)!;entity.SetValue(component,componentProjectile);
 componentType.GetMethod("SetDefaults")!.Invoke(component,null);

@@ -10,4 +10,6 @@ public sealed class NoitaConfig : ModConfig
     [DefaultValue("")]
     [ReloadRequired]
     public string ExtractedDataRoot = "";
+    [DefaultValue(true)]
+    public bool AdaptedLiquidReactions = true;
 }

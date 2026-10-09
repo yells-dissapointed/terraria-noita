@@ -30,6 +30,10 @@ Items: {
 Configs: {
     NoitaConfig: {
         DisplayName: Noita compatibility
+        AdaptedLiquidReactions: {
+            Label: Adapted liquid reactions
+            Tooltip: "Enable acid dilution, water extinguishing and fallback ignition alongside imported Noita recipes. Disable for imported recipes only."
+        }
         ExtractedDataRoot: {
             Label: Extracted Noita folder
             Tooltip: "Select the extracted Noita root, data folder, gun folder, or gun.lua file. Reload the mod after changing this."
