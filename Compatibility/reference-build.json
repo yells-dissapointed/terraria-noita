@@ -1,0 +1,51 @@
+{
+  "description": "Reference inputs supplied by the user; source is not included.",
+  "wak_sha256": "c95a0c01a55ec29267afef6bbec8a0cae0ba2b350638e2203674ed4dfb9227c3",
+  "scripts": [
+    {
+      "path": "data/scripts/gun/gun.lua",
+      "bytes": 16111,
+      "sha256": "30b1cfae774978950ce4a8b595d98e7475799689df42ff2d165ccb6257b3b96c"
+    },
+    {
+      "path": "data/scripts/gun/gun_enums.lua",
+      "bytes": 289,
+      "sha256": "31ddde97d0ad8a3ec33e5922ca51c663431b882d52090696721610eca6c9c469"
+    },
+    {
+      "path": "data/scripts/gun/gunaction_generated.lua",
+      "bytes": 13088,
+      "sha256": "13d8e7825acb61610e8f742af856cbb559ad5cfee3a35980b6c3712ba842e460"
+    },
+    {
+      "path": "data/scripts/gun/gun_generated.lua",
+      "bytes": 982,
+      "sha256": "5749d0186327d87f57da1d79203e7835dca88e9aee81567fc9b5052634405b64"
+    },
+    {
+      "path": "data/scripts/gun/gunshoteffects_generated.lua",
+      "bytes": 459,
+      "sha256": "7921152d1a5041884095b445f0128a61fa36ad68554b96c70f4a2547f25d29df"
+    },
+    {
+      "path": "data/scripts/gun/gun_actions.lua",
+      "bytes": 421762,
+      "sha256": "09a034b16fbacbe330b76f47bf66a05919d8d3301c1030263851ab95b5c8c532"
+    },
+    {
+      "path": "data/scripts/gun/gun_extra_modifiers.lua",
+      "bytes": 4655,
+      "sha256": "9ed222afa98ea98d81953209afee1594285936e81a4c97e54d03e8bc7af66f66"
+    },
+    {
+      "path": "data/scripts/gun/procedural/gun_action_utils.lua",
+      "bytes": 3269,
+      "sha256": "0cd104f88f364e4998ae291d048a7872f0b5f987da6fcc0460669d522bfeff3f"
+    },
+    {
+      "path": "data/scripts/lib/utilities.lua",
+      "bytes": 29726,
+      "sha256": "54b5f6344cf4dae24f570fc8c8471a4ab90b4dd295ca8d1fa65dbcddb8005410"
+    }
+  ]
+}

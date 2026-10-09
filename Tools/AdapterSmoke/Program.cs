@@ -1,0 +1,493 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Text.Json;
+using terrarianoita.Core;
+
+if (args.Length < 3)
+{
+    Console.Error.WriteLine("Usage: AdapterSmoke <native-library> <extracted-data-root> <bridge.lua> [output.json]");
+    return 2;
+}
+string native = Path.GetFullPath(args[0]), data = Path.GetFullPath(args[1]), bridge = File.ReadAllText(args[2]);
+int checks = 0;
+var output = new Dictionary<string, CastPlan>();
+Lua51Runtime New() => new(native, data, bridge);
+void Check(bool condition, string message)
+{
+    if (!condition) throw new Exception("FAIL: " + message);
+    checks++;
+}
+string originalRoot = NoitaDataPaths.ResolveRoot(data);
+foreach (string input in new[] {
+    originalRoot, Path.Combine(originalRoot, "data"),
+    Path.Combine(originalRoot, "data", "scripts"),
+    Path.Combine(originalRoot, "data", "scripts", "gun"),
+    Path.Combine(originalRoot, "data", "scripts", "gun", "gun.lua") })
+    Check(NoitaDataPaths.ResolveRoot(input) == originalRoot, "data path layout: " + input);
+Check(NoitaDataPaths.ResolveRoot("  \"" + originalRoot + "\"  ") == originalRoot, "quoted path from Copy as path");
+string? priorEnvironment = Environment.GetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT");
+try
+{
+    Environment.SetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT", originalRoot);
+    Check(NoitaDataPaths.ResolveRoot("%TERRARIANOITA_SMOKE_DATA_ROOT%") == originalRoot, "environment variable path");
+}
+finally { Environment.SetEnvironmentVariable("TERRARIANOITA_SMOKE_DATA_ROOT", priorEnvironment); }
+string fixture = Path.Combine(Path.GetTempPath(), "Noita path checks " + Guid.NewGuid().ToString("N"));
+try
+{
+    bool rejected = false;
+    try { NoitaDataPaths.ResolveRoot(fixture); }
+    catch (DirectoryNotFoundException e) { rejected = e.Message.Contains(fixture); }
+    Check(rejected, "missing configured folder is identified");
+    Directory.CreateDirectory(fixture);
+    File.WriteAllText(Path.Combine(fixture, "data.wak"), "fixture");
+    rejected = false;
+    try { NoitaDataPaths.ResolveRoot(fixture); }
+    catch (FileNotFoundException e) { rejected = e.Message.Contains("extract it first"); }
+    Check(rejected, "packed data gives extraction guidance");
+    string gunFolder = Path.Combine(fixture, "data", "scripts", "gun");
+    Directory.CreateDirectory(gunFolder);
+    File.WriteAllText(Path.Combine(gunFolder, "gun.lua"), "fixture");
+    rejected = false;
+    try { NoitaDataPaths.ResolveRoot(gunFolder); }
+    catch (FileNotFoundException e) { rejected = e.Message.Contains("incomplete") && e.FileName == Path.Combine(gunFolder, "gun_enums.lua"); }
+    Check(rejected, "incomplete extraction identifies the missing dependency");
+}
+finally { if (Directory.Exists(fixture)) Directory.Delete(fixture, true); }
+CastPlan Cast(string name, string[] cards, double mana = 100, string[]? permanent = null, double reload = 40)
+{
+    using var runtime = New();
+    runtime.Configure(new(cards.Select(c => new SpellSlot(c)).ToArray(), ReloadTime: reload));
+    var plan = runtime.Cast(mana, permanent);
+    output[name] = plan;
+    return plan;
+}
+using (var runtime = new Lua51Runtime(native, Path.Combine(originalRoot, "data", "scripts", "gun"), bridge))
+{
+    Console.WriteLine("Native runtime: " + runtime.RuntimeVersion);
+    Check(runtime.Evaluate("return tostring(io == nil and os == nil and package == nil)") == "true", "file/process libraries removed");
+}
+var spark = Cast("spark", new[] { "LIGHT_BULLET" });
+Check(spark.Mana == 95 && spark.Root.Projectiles.Count == 1, "spark mana/projectile");
+var damage = Cast("damage_spark", new[] { "DAMAGE", "LIGHT_BULLET" });
+Check(damage.Mana == 90 && damage.Root.Number("damage_projectile_add") == .4, "additive damage");
+var multi = Cast("multicast_late_modifier", new[] { "BURST_2", "LIGHT_BULLET", "DAMAGE", "LIGHT_BULLET" });
+Check(multi.Root.Projectiles.Count == 2 && multi.Root.Number("damage_projectile_add") == .4, "multicast final shared config");
+var trigger = Cast("trigger", new[] { "LIGHT_BULLET_TRIGGER", "DAMAGE", "LIGHT_BULLET" });
+var payload = trigger.Root.Projectiles.Single().Triggers.Single().Payload;
+Check(trigger.Mana == 80 && payload.Number("damage_projectile_add") == .4 && trigger.Root.Number("damage_projectile_add") == 0, "trigger fresh state and upfront mana");
+Check(payload.Projectiles.Count == 1 && payload.Committed, "trigger payload tree committed");
+var outer = Cast("outer_modifier", new[] { "DAMAGE", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET" });
+Check(outer.Root.Number("damage_projectile_add") == .4 && outer.Root.Projectiles[0].Triggers[0].Payload.Number("damage_projectile_add") == 0, "outer config does not copy into payload");
+var nested = Cast("nested_trigger", new[] { "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET" });
+Check(nested.Root.Projectiles[0].Triggers[0].Payload.Projectiles[0].Triggers[0].Payload.Projectiles.Count == 1, "nested payload tree");
+var chainsawLast = Cast("chainsaw_last", new[] { "BURST_2", "LIGHT_BULLET", "CHAINSAW" });
+var chainsawFirst = Cast("chainsaw_first", new[] { "BURST_2", "CHAINSAW", "LIGHT_BULLET" });
+Check(chainsawLast.Root.Number("fire_rate_wait") == 0 && chainsawFirst.Root.Number("fire_rate_wait") == 3, "chainsaw order");
+Check(chainsawLast.ReloadRequest == 30, "chainsaw recharge request");
+var skip = Cast("mana_skip", new[] { "BOMB", "LIGHT_BULLET" }, 5);
+Check(skip.Mana == 0 && skip.Root.Projectiles.Single().Entity.EndsWith("light_bullet.xml"), "mana skip");
+var addMana = Cast("add_mana", new[] { "MANA_REDUCE", "LIGHT_BULLET" }, 0);
+Check(addMana.Mana == 25, "negative mana cost");
+var permanentDamage = Cast("always_cast", new[] { "LIGHT_BULLET" }, permanent: new[] { "DAMAGE" });
+Check(permanentDamage.Mana == 95 && permanentDamage.Root.Projectiles.Count == 1, "always cast draw suppression and mana");
+var addedTrigger = Cast("add_trigger", new[] { "ADD_TRIGGER", "DAMAGE", "LIGHT_BULLET", "LIGHT_BULLET" });
+Check(addedTrigger.Mana == 85 && addedTrigger.Root.Projectiles[0].Triggers.Count == 1, "add trigger bypass path");
+var gamma = Cast("gamma_copy", new[] { "GAMMA", "LIGHT_BULLET" });
+Check(gamma.Mana == 60 && gamma.Root.Projectiles.Count == 1, "direct copy bypass path");
+var fraction = Cast("fractional_reload", new[] { "CHAINSAW" }, reload: 5.75);
+Check(fraction.ReloadRequest == -4.25, "raw native-boundary reload preserved");
+using (var first = New())
+using (var second = New())
+{
+    first.Configure(new(new[] { new SpellSlot("LIGHT_BULLET"), new SpellSlot("DAMAGE") }));
+    second.Configure(new(new[] { new SpellSlot("CHAINSAW") }));
+    var a = first.Cast(100);
+    var b = second.Cast(100);
+    var c = first.Cast(a.Mana);
+    Check(a.Deck.SequenceEqual(new[] { "DAMAGE" }) && c.Root.Number("damage_projectile_add") == .4, "deck survives between casts and wraps");
+    Check(b.Root.Number("fire_rate_wait") == 0, "independent wand state");
+}
+using (var runtime = New())
+{
+    runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET"), new SpellSlot("BOMB") }, Shuffle: true));
+    Check(runtime.Cast(100).Root.Projectiles.Count == 1, "shuffle runs through deterministic host RNG");
+    bool rejected = false;
+    runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET") }));
+    rejected = false;
+    try { runtime.Cast(double.NaN); } catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected && runtime.Cast(100).Mana == 95, "bad managed input does not poison Lua state");
+}
+using (var runtime = New())
+{
+    bool rejected = false;
+    try { runtime.Configure(new(new[] { new SpellSlot("NOT_A_SPELL") })); }
+    catch (InvalidOperationException) { rejected = true; }
+    Check(rejected, "unknown original action fails");
+    rejected = false;
+    try { runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET") })); }
+    catch (InvalidOperationException) { rejected = true; }
+    Check(rejected, "failed runtime cannot be reused");
+}
+var timer = Cast("timer", new[] { "LIGHT_BULLET_TIMER", "LIGHT_BULLET" });
+var runner = new TriggerRunner(timer.Root.Projectiles[0].Triggers);
+int fired = 0;
+runner.Observe(TriggerSignal.Tick, 9, _ => fired++);
+Check(fired == 0, "timer waits");
+runner.Observe(TriggerSignal.Tick, 10, _ => fired++);
+runner.Observe(TriggerSignal.Tick, 11, _ => fired++);
+runner.Observe(TriggerSignal.Death, 11, _ => fired++);
+Check(fired == 1, "timer fires once");
+runner = new TriggerRunner(trigger.Root.Projectiles[0].Triggers);
+fired = 0;
+runner.Observe(TriggerSignal.Impact, 1, _ => fired++);
+runner.Observe(TriggerSignal.Impact, 1, _ => fired++);
+runner.Observe(TriggerSignal.Death, 1, _ => fired++);
+Check(fired == 1, "impact payload fires once across collision/death callbacks");
+bool badTree = false;
+try { CastPlan.Parse("{\"version\":1,\"mana\":100,\"root\":{\"committed\":false}}"); }
+catch (InvalidOperationException) { badTree = true; }
+Check(badTree, "uncommitted plan rejected");
+using (var runtime = New())
+{
+    runtime.Execute("for _, a in ipairs(actions) do if a.id == 'LIGHT_BULLET' then a.action = function() while true do end end end end");
+    runtime.Configure(new(new[] { new SpellSlot("LIGHT_BULLET") }));
+    bool rejected = false;
+    try { runtime.Cast(100); }
+    catch (InvalidOperationException e) { rejected = e.Message.Contains("instruction budget"); }
+    Check(rejected, "hot loop stops at instruction budget");
+}
+using (var runtime = New())
+{
+    runtime.Configure(new(Enumerable.Repeat(new SpellSlot("LIGHT_BULLET_TRIGGER"), 18).ToArray()));
+    bool rejected = false;
+    try { runtime.Cast(1000); }
+    catch (InvalidOperationException e) { rejected = e.Message.Contains("trigger depth"); }
+    Check(rejected, "nested original triggers stop at depth limit");
+}
+using (var runtime = New())
+{
+    bool rejected = System.Threading.Tasks.Task.Run(() => {
+        try { runtime.Evaluate("return _VERSION"); return false; }
+        catch (InvalidOperationException) { return true; }
+    }).GetAwaiter().GetResult();
+    Check(rejected, "active calls remain on the owning thread");
+    System.Threading.Tasks.Task.Run(runtime.Dispose).GetAwaiter().GetResult();
+    Check(runtime.IsDisposed, "loader-thread disposal is supported");
+}
+runner = new TriggerRunner(new[] { new TriggerPlan { Kind = "death", Payload = payload } });
+fired = 0;
+runner.Observe(TriggerSignal.Impact, 1, _ => fired++);
+runner.Observe(TriggerSignal.Death, 1, _ => { fired++; runner.Observe(TriggerSignal.Death, 1, _ => fired++); });
+Check(fired == 1, "death payload fires once even during callback reentry");
+var definition = new WandDefinition {
+    Deck = new() { "BURST_2", "LIGHT_BULLET", "DAMAGE", "LIGHT_BULLET" },
+    AlwaysCast = new() { "MANA_REDUCE" }, CastDelay = 20, ReloadTime = 60,
+    ActionsPerRound = 2, ManaMax = 250, ManaRecharge = 75
+};
+var copied = definition.Copy(); copied.Deck.RemoveAt(0); copied.AlwaysCast.Clear();
+Check(definition.Deck.Count == 4 && definition.AlwaysCast.Count == 1, "editor drafts do not alias the equipped definition");
+var savedDefinition = JsonSerializer.Deserialize<WandDefinition>(JsonSerializer.Serialize(definition))!;
+Check(savedDefinition.Deck.SequenceEqual(definition.Deck) && savedDefinition.AlwaysCast.SequenceEqual(definition.AlwaysCast) &&
+      savedDefinition.CastDelay == 20 && savedDefinition.ReloadTime == 60 && savedDefinition.ManaMax == 250 &&
+      savedDefinition.ManaRecharge == 75 && savedDefinition.ActionsPerRound == 2, "saved editor definition preserves order, always cast and stats");
+var invalidDefinition = definition.Copy(); invalidDefinition.Deck.Clear();
+bool invalidDraft = false;
+try { invalidDefinition.Validate(); } catch (ArgumentException) { invalidDraft = true; }
+Check(invalidDraft, "empty deck rejected before applying");
+invalidDefinition = definition.Copy(); invalidDefinition.ManaRecharge = double.NaN; invalidDraft = false;
+try { invalidDefinition.Validate(); } catch (ArgumentException) { invalidDraft = true; }
+Check(invalidDraft, "invalid editor stats rejected");
+using (var runtime = New())
+{
+    var ids = runtime.SpellIds();
+    Check(ids.Length == 422 && ids.Contains("CHAINSAW") && ids.Contains("LIGHT_BULLET"), "editor reads original complete spell catalog");
+    runtime.Configure(savedDefinition.Configuration());
+    var plan = runtime.Cast(250, savedDefinition.AlwaysCast);
+    Check(plan.Root.Projectiles.Count > 0 && plan.Mana > 250 - 30, "edited definition casts with always-cast mana behavior");
+}
+var trace = new CastDiagnostics(); trace.Begin("Preview", new WandDefinition(), 100); trace.Capture(trigger);
+Check(trace.Lines.Any(l => l.Contains("Draw DAMAGE | mana")) && trace.Lines.Any(l => l.Contains("hit_world")), "debug display includes per-action mana and trigger payloads");
+trace.Event("Hit test dummy for 13 damage"); trace.Fail("Unsupported demo entity");
+using (var json = JsonDocument.Parse(trace.Json()))
+{
+    Check(json.RootElement.GetProperty("plan").GetProperty("root").GetProperty("projectiles")[0].GetProperty("triggers")[0].GetProperty("payload").GetProperty("committed").GetBoolean() &&
+          json.RootElement.GetProperty("runtime_events")[0].GetString()!.Contains("dummy") &&
+          json.RootElement.GetProperty("error").GetString()!.Contains("Unsupported"), "export retains full trigger tree, runtime collision events and failures");
+}
+var demoIds = new[] { "LIGHT_BULLET", "LIGHT_BULLET_TRIGGER", "LIGHT_BULLET_TRIGGER_2", "LIGHT_BULLET_TIMER", "CHAINSAW",
+    "BURST_2", "BURST_3", "BURST_4", "DAMAGE", "MANA_REDUCE", "RECHARGE", "SPREAD_REDUCE", "SPEED", "LIFETIME", "LIFETIME_DOWN", "ADD_TRIGGER", "ADD_TIMER", "ADD_DEATH_TRIGGER", "GAMMA" };
+using (var runtime = New())
+{
+    var ids = runtime.SpellIds();
+    foreach (string id in demoIds.Where(ids.Contains))
+    {
+        using var sample = New();
+        sample.Configure(new(new[] { new SpellSlot(id), new SpellSlot("LIGHT_BULLET"), new SpellSlot("LIGHT_BULLET"), new SpellSlot("LIGHT_BULLET") }));
+        var plan = sample.Cast(1000);
+        bool EntitiesSupported(ShotPlan shot) => shot.Projectiles.All(p =>
+            (p.Entity.EndsWith("light_bullet.xml") || p.Entity.EndsWith("light_bullet_blue.xml") || p.Entity.EndsWith("chainsaw.xml")) && p.Triggers.All(t => EntitiesSupported(t.Payload)));
+        Check(EntitiesSupported(plan.Root), "demo palette emits supported entity paths: " + id);
+    }
+}
+// Reproduce the old full-texture scaling bug with 1x1, 2x2 and large textures.
+foreach (var texture in new[] { (1, 1), (2, 2), (20, 20), (256, 32) })
+foreach (var size in new[] { (12f, 8f), (6f, 3f), (28f, 3f), (8f, 8f) })
+{
+    var quad = PixelQuad.Fit(texture.Item1, texture.Item2, size.Item1, size.Item2);
+    Check(Math.Abs(quad.ScaleX * texture.Item1 - size.Item1) < .0001f &&
+          Math.Abs(quad.ScaleY * texture.Item2 - size.Item2) < .0001f &&
+          Math.Abs(quad.OriginX * quad.ScaleX - size.Item1 / 2) < .0001f &&
+          Math.Abs(quad.OriginY * quad.ScaleY - size.Item2 / 2) < .0001f,
+          "sprite size and center are independent of the pixel texture dimensions");
+}
+using (var catalog = New())
+{
+    var neutral = catalog.DefaultConfiguration();
+    var audit = new SpellAudit(new[] { "LIGHT_BULLET", "DAMAGE", "BOMB", "DAMAGE_RANDOM", "MANA_REDUCE" }, New, neutral);
+    while (audit.Step()) { }
+    Check(audit.Report.Complete && audit.Report.Cases.Count == 15, "audit runs three isolated contexts per spell");
+    var sparkCase = audit.Report.Cases.First(c => c.Spell == "LIGHT_BULLET");
+    Check(sparkCase.Status == SpellAuditStatus.DemoWithGaps && sparkCase.Inspection!.Missing.Any(s => s.Contains("damage_critical_chance")), "audit flags ignored spark critical chance despite a renderable entity");
+    Check(audit.Report.Cases.First(c => c.Spell == "BOMB").Status == SpellAuditStatus.Unsupported, "audit detects unported bomb entity");
+    Check(audit.Report.Cases.Where(c => c.Spell == "DAMAGE_RANDOM").All(c => c.Status != SpellAuditStatus.ScriptError), "random damage executes original Lua with host RNG");
+    Check(audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.NoProjectile) &&
+          audit.Report.Cases.Any(c => c.Spell == "MANA_REDUCE" && c.Status == SpellAuditStatus.DemoWithGaps), "utility spells are tested with follow-up projectiles");
+    Check(audit.Report.Cases.Any(c => c.Spell == "DAMAGE" && c.Inspection != null && c.Inspection.Missing.Any(m => m.Contains("extra_entities"))), "audit reports ignored native effect entities");
+    var nestedInspection = DemoCapabilities.Inspect(trigger, neutral);
+    Check(nestedInspection.ProjectileCount > 1 && nestedInspection.TriggerCount > 0 && nestedInspection.Missing.Any(m => m.Contains("extra_entities")), "audit inspects nested payload configuration");
+    using var parsed = JsonDocument.Parse(audit.Report.Json());
+    Check(parsed.RootElement.GetProperty("Complete").GetBoolean() && parsed.RootElement.GetProperty("Cases").GetArrayLength() == 15 &&
+          parsed.RootElement.GetProperty("Limits").GetString()!.Contains("No collision"), "audit export retains every case and states coverage limits");
+}
+using (var catalogForScan = New())
+{
+    var ids = catalogForScan.SpellIds();
+    var cards = catalogForScan.SpellCards();
+    Check(cards.Length == 422 && cards.Select(c => c.Id).OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(ids) && cards.Single(c => c.Id == "BOMB").Sprite.EndsWith("bomb.png"), "original spell metadata includes every card and its local image");
+    var scan = new SpellDebugSequence(ids); scan.SetMode(SpellDebugMode.AllContexts);
+    var seen = new HashSet<string>();
+    while (!scan.Complete)
+    {
+        var sample = scan.Current();
+        seen.Add(sample.Spell + "/" + sample.Context); scan.Advance();
+    }
+    Check(seen.Count == 1266 && scan.Index == 1266, "automatic debug scan visits all 422 spells in all three contexts without wrapping");
+    scan.Advance(); Check(scan.Index == 1266, "completed scan stays stopped");
+    scan.Move(-1); Check(scan.Current().Spell == ids[^1] && scan.ContextIndex == 2, "previous selects the final test after completion");
+    scan.SetMode(SpellDebugMode.FollowedBySparks);
+    Check(scan.Index == 0 && scan.Total == 422 && scan.Current().Deck.Count == 5 && scan.Current().AlwaysCast.Count == 0, "default debug context supplies follow-up sparks and resets cursor");
+    scan.Move(-100); Check(scan.Index == 0, "previous clamps at start");
+    scan.Move(10000); Check(scan.Index == 421, "next clamps to final valid case");
+    scan.SetMode(SpellDebugMode.AlwaysCast);
+    Check(scan.Current().AlwaysCast.Single() == ids[0] && scan.Current().Deck.All(id => id == "LIGHT_BULLET"), "always-cast debug recipe uses the selected spell and support sparks");
+    scan.SetMode(SpellDebugMode.AllContexts); scan.Select("LIGHT_BULLET_TIMER");
+    Check(scan.Spell == "LIGHT_BULLET_TIMER" && scan.ContextIndex == 0, "preset selects the first context of the requested spell");
+    int heldIndex = scan.Index;
+    for (int i = 0; i < 20; i++) scan.Advance(holdSpell: true);
+    Check(scan.Index == heldIndex && scan.ContextIndex == 0 && scan.Spell == "LIGHT_BULLET_TIMER", "fixed mode retains both spell and context across manual/automatic repetitions");
+    scan.Advance(); Check(scan.Index == heldIndex + 1 && scan.ContextIndex == 1, "switching back to cycling resumes the following context");
+    var neutral = catalogForScan.DefaultConfiguration();
+    int released = 0;
+    void ReleaseCase(Lua51Runtime r) { r.Dispose(); released++; }
+    var failedCase = SpellAudit.RunCase("NOT_A_SPELL", 1, New, neutral, ReleaseCase);
+    var nextCase = SpellAudit.RunCase("LIGHT_BULLET", 1, New, neutral, ReleaseCase);
+    Check(released == 2 && failedCase.Status == SpellAuditStatus.ScriptError && nextCase.Status == SpellAuditStatus.DemoWithGaps, "debug scan releases failed states and tests the next spell independently");
+    var liveTrace = new CastDiagnostics(); liveTrace.Begin("Debug spark", new WandDefinition(), 10000); liveTrace.Capture(nextCase.Plan!);
+    var liveReport = new SpellLiveReport(); liveReport.Add(new SpellLiveCase { Test = nextCase, Trace = liveTrace, RootProjectilesSpawned = 1 });
+    liveTrace.Event("Hit training target after initial cast");
+    using var liveJson = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "C:/mods/terrarianoita.tmod"));
+    var liveCase = liveJson.RootElement.GetProperty("cases")[0];
+    Check(liveCase.GetProperty("root_projectiles_spawned").GetInt32() == 1 &&
+          liveCase.GetProperty("trace").GetProperty("runtime_events")[0].GetString()!.Contains("training target") &&
+          liveJson.RootElement.GetProperty("loaded_mod_version").GetString() == BuildStamp.Version, "live report includes later collision events, actual root spawn count and build identity");
+    var preview = new SpellLiveCase { Test = failedCase, DiagnosticCardsSpawned = 1, VisualPreview = true };
+    liveReport.Add(preview);
+    preview.VisualEntities.Add(new VisualEntityEvidence { Entity = "fixture.xml", Appearance = "entity marker" });
+    using var previewJson = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "fixture.tmod"));
+    var failedJson = previewJson.RootElement.GetProperty("cases")[1];
+    Check(failedJson.GetProperty("root_projectiles_spawned").GetInt32() == 0 && failedJson.GetProperty("diagnostic_cards_spawned").GetInt32() == 1 && failedJson.GetProperty("visual_entities").GetArrayLength() == 1,
+        "diagnostic cards never become emitted roots and late visual evidence is retained");
+    var source = NoitaXml.Parse("<Entity><LuaComponent script_source_file='native.lua'/></Entity>");
+    preview.VisualEntities[0].ImportedSources["data/fixture.xml"] = source;
+    var another = new VisualEntityEvidence(); another.ImportedSources["data/fixture.xml"] = source; preview.VisualEntities.Add(another);
+    using var xmlReport = JsonDocument.Parse(liveReport.Json(BuildStamp.Version, "fixture.tmod"));
+    Check(xmlReport.RootElement.GetProperty("imported_xml").EnumerateObject().Count() == 1 &&
+          xmlReport.RootElement.GetProperty("imported_xml").GetProperty("data/fixture.xml").GetProperty("Children")[0].GetProperty("Name").GetString() == "LuaComponent" &&
+          !xmlReport.RootElement.GetProperty("cases")[1].GetProperty("visual_entities")[0].TryGetProperty("ImportedSources", out _), "report retains complete deferred XML data once per source instead of once per projectile");
+}
+var assets = new NoitaAssetCatalog(data);
+foreach (string path in new[] { "data/entities/projectiles/bomb.xml", "data/entities/projectiles/deck/arrow.xml", "data/entities/projectiles/deck/bullet.xml", "data/entities/projectiles/deck/bullet_heavy.xml", "data/entities/projectiles/deck/bullet_slow.xml", "data/entities/projectiles/deck/rocket.xml" })
+    Check(TerrariaSpellMatches.Find(path).Implemented && assets.Entity(path).Component("ProjectileComponent") != null, "implemented Terraria match has a real supplied entity definition: " + path);
+Check(TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").Implemented &&
+      TerrariaSpellMatches.Find("data/entities/projectiles/deck/black_hole.xml").UseNoitaSprite &&
+      TerrariaSpellMatches.Find("data/entities/projectiles/deck/disc_bullet.xml").Implemented, "custom black hole and saw adapters preserve original visual identity");
+
+foreach (string entity in new[] { "teleport_projectile", "teleport_projectile_short", "teleport_projectile_static", "teleport_projectile_closer", "black_hole", "black_hole_big", "tentacle", "disc_bullet", "disc_bullet_big", "disc_bullet_bigger" })
+{
+    string path = "data/entities/projectiles/deck/" + entity + ".xml";
+    var effect = SpellEffectProfile.Load(assets, path);
+    Check(effect.Kind != NoitaEffectKind.None && effect.Visual.Lifetime > 0 && TerrariaSpellMatches.Find(path).Implemented, "custom effect reads supplied entity: " + entity);
+}
+var tentacleEffect = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/tentacle.xml");
+Check(tentacleEffect.Points == 16 && tentacleEffect.Segments.Count == 15 && tentacleEffect.Visual.SpeedPerFrame == 8 && Math.Abs(tentacleEffect.Damage - .8) < .001,
+    "Verlet tentacle imports all 15 real segment sprites, 16 points, per-step launch speed and melee damage");
+var holeEffect = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/black_hole.xml");
+var superHole = SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/black_hole_big.xml");
+Check(holeEffect.RadiusAt(0) == 12 && holeEffect.RadiusAt(500) == 12 && holeEffect.Damage == 0 && superHole.RadiusAt(0) == 1 && superHole.RadiusAt(99) == 34 && superHole.RadiusAt(999) == 64,
+    "ordinary black hole retains 12px digging and zero direct damage; super-hole grows every three frames to 64px");
+Check(SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_short.xml").Visual.Lifetime == 8 &&
+      SpellEffectProfile.Load(assets, "data/entities/projectiles/deck/teleport_projectile_static.xml").Visual.SpeedPerFrame == 0,
+    "short teleport remains eight frames and return teleport remains static");
+Check(SpellEffectProfile.Supports("data/entities/projectiles/deck/black_hole_giga.xml") && !SpellEffectProfile.Supports("data/fake/disc_bullet.xml"),
+    "giga hole is explicit while similarly named foreign entities remain unsupported");
+var openLanding = SpellLanding.Find(new(10, 20), _ => true);
+var blockedLanding = SpellLanding.Find(new(10, 20), _ => false);
+var nearbyLanding = SpellLanding.Find(new(10, 20), p => p.Y <= 12);
+Check(openLanding == new System.Numerics.Vector2(10, 20) && blockedLanding == null && nearbyLanding.HasValue && System.Numerics.Vector2.Distance(nearbyLanding.Value, new(10, 20)) <= 8.001,
+    "teleport landing uses the exact clear target, nearest nearby clearance, or cancellation when fully blocked");
+Check(DebugModifiers.Cards(0, 0, 0, false).Length == 0 && SpellVisuals.TerrariaScale == 1 && SpellVisuals.Scale == 1.75f,
+    "default debug deck has no injected cards; Terraria and original Noita sprites have separate scales");
+using (var catalogRuntime = New())
+{
+    var ids = catalogRuntime.SpellIds(); var neutral = catalogRuntime.DefaultConfiguration();
+    Check(DebugModifiers.Movement.Concat(DebugModifiers.Tracking).Concat(DebugModifiers.Speed).Concat(DebugModifiers.Effects).Append("BOUNCE").Where(id => id.Length > 0).All(ids.Contains),
+        "all debug modifier choices are actual original Noita cards");
+    for (int movement = 0; movement < 4; movement++)
+        for (int tracking = 0; tracking < 4; tracking++)
+            for (int speed = 0; speed < 4; speed++)
+                for (int bounce = 0; bounce < 2; bounce++)
+                {
+                    var choices = DebugModifiers.Cards(movement, tracking, speed, bounce != 0);
+                    var modified = SpellAudit.RunCase("BULLET", 0, New, neutral, modifiers: choices);
+                    Check(modified.Plan != null && modified.Status != SpellAuditStatus.ScriptError && modified.Deck.SequenceEqual(choices.Append("BULLET")) &&
+                        choices.All(id => modified.Plan.Events.Any(e => e.Kind == "action" && e.Value.GetString() == id)) &&
+                        modified.Plan.Root.Projectiles.Any(p => p.Entity == "data/entities/projectiles/deck/bullet.xml"),
+                        $"real Lua executes modifier recipe {movement}/{tracking}/{speed}/{bounce} before the intended projectile");
+                    var motion = SpellMotion.Load(modified.Plan!.Root, assets);
+                    Check(motion.Sine == (movement == 1) && motion.Spiral == (movement == 2) && motion.PingPong == (movement == 3) &&
+                        (motion.HomingRange > 0) == (tracking != 0) && (motion.Bounces > 0) == (bounce != 0),
+                        $"movement adapter reads actual cast config for recipe {movement}/{tracking}/{speed}/{bounce}");
+                }
+    var followed = SpellAudit.RunCase("TENTACLE_TIMER", 1, New, neutral, modifiers: new[] { "HOMING", "BOUNCE" });
+    Check(followed.Plan != null && followed.Plan.Root.Projectiles[0].Triggers.Any(t => t.Kind == "timer" && t.DelayFrames == 20) && followed.Deck[0] == "HOMING",
+        "modifier choices retain real tentacle timer payload construction");
+    var always = SpellAudit.RunCase("LIGHT_BULLET", 2, New, neutral, modifiers: new[] { "SINEWAVE" });
+    Check(always.Plan != null && always.AlwaysCast.SequenceEqual(new[] { "LIGHT_BULLET" }) && always.Deck[0] == "SINEWAVE", "debug modifiers retain the original always-cast recipe and Lua ordering");
+}
+var noMotion = new SpellMotion();
+Check(System.Numerics.Vector2.Distance(noMotion.Step(new(8, 2), 1), new(8, 2)) < .001, "neutral movement leaves velocity unchanged");
+var homingMotion = new SpellMotion { HomingRange = 240, TurnRate = .1 };
+var turned = homingMotion.Step(new(10, 0), 1, new System.Numerics.Vector2(0, 1));
+Check(Math.Abs(turned.Length() - 10) < .001 && Math.Abs(Math.Atan2(turned.Y, turned.X) - .1) < .001, "homing turns toward the target within the allowed angular step while preserving speed");
+Check(homingMotion.Step(System.Numerics.Vector2.Zero, 1, new System.Numerics.Vector2(1, 1)) == System.Numerics.Vector2.Zero, "homing does not launch static return teleport or static black holes");
+var accel = new SpellMotion { Acceleration = Math.Exp(3 / 60d) };
+var decel = new SpellMotion { Acceleration = Math.Exp(-6 / 60d) };
+Check(accel.Step(new(10, 0), 1).Length() > 10 && decel.Step(new(10, 0), 1).Length() < 10, "native friction modifiers map to accelerating and decelerating trajectories");
+foreach (var moving in new[] { new SpellMotion { Sine = true }, new SpellMotion { Spiral = true }, new SpellMotion { PingPong = true }, accel })
+{
+    var velocity = new System.Numerics.Vector2(10, 0); bool changed = false;
+    for (int age = 1; age <= 3600; age++) { velocity = moving.Step(velocity, age); changed |= System.Numerics.Vector2.Distance(velocity, new(10, 0)) > .01; }
+    Check(changed && float.IsFinite(velocity.X) && float.IsFinite(velocity.Y) && velocity.Length() <= 120.01, "movement remains finite and bounded through a full extended lifetime");
+}
+
+var sparkAsset = assets.Entity("data/entities/projectiles/deck/light_bullet.xml");
+var sparkProfile = assets.Profile(sparkAsset);
+Check(sparkAsset.Sources.Count >= 2 && sparkProfile.Sprites.Count > 0 && Math.Abs(sparkProfile.SpeedPerFrame - 800 / 60d) < .001, "base inheritance and XML mean speed are imported for spark");
+var sprite = sparkProfile.Sprites[0];
+Check(sprite.Frame(0) == new SpriteFrame(0, 1, 9, 9) && sprite.Frame(12) == new SpriteFrame(10, 1, 9, 9) && sprite.Frame(24) == sprite.Frame(0), "original spark sheet uses cropped 9x9 frames with 10px stride and bounded looping");
+Check(assets.Profile(assets.Entity("data/entities/projectiles/bomb.xml")).Sprites.Any(), "physics image shape provides original bomb sprite");
+bool pathRejected = false;
+try { assets.LocalPath("data/../outside.xml"); } catch (InvalidOperationException) { pathRejected = true; }
+Check(pathRejected, "asset path rejects traversal");
+var warnings = new List<string>();
+var tolerant = NoitaXml.Parse("<Entity tags='a' <!-- in-tag comment --> tags='b'><ProjectileComponent speed_min='12' /></Entity>", warnings);
+Check(tolerant.Get("tags") == "b" && warnings.Count == 1 && tolerant.Children[0].Number("speed_min") == 12, "permissive XML records duplicate attributes and handles inline comments");
+bool declarationRejected = false;
+try { NoitaXml.Parse("<!DOCTYPE Entity SYSTEM 'file:///fixture'><Entity />"); } catch (InvalidOperationException) { declarationRejected = true; }
+Check(declarationRejected, "XML does not resolve external entities");
+string xmlFixture = Path.Combine(Path.GetTempPath(), "Noita XML checks " + Guid.NewGuid().ToString("N"));
+try
+{
+    foreach (string path in Lua51Runtime.SourcePaths)
+    { string file = Path.Combine(xmlFixture, path); Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllText(file, "fixture"); }
+    File.WriteAllText(Path.Combine(xmlFixture, "data/base.xml"), "<Entity><ProjectileComponent speed_min='60'><config_explosion damage='2' /></ProjectileComponent><VelocityComponent gravity_y='3600'/><Entity name='child'/></Entity>");
+    File.WriteAllText(Path.Combine(xmlFixture, "data/derived.xml"), "<Entity><Base file='data/base.xml'><ProjectileComponent speed_min='120'><config_explosion damage='3'/></ProjectileComponent><VelocityComponent _remove_from_base='1'/></Base><LuaComponent script_source_file='unknown.lua'/></Entity>");
+    var fixtureAssets = new NoitaAssetCatalog(xmlFixture); var derived = fixtureAssets.Entity("data/derived.xml");
+    Check(derived.Component("ProjectileComponent")!.Number("speed_min") == 120 && derived.Component("ProjectileComponent")!.Children[0].Number("damage") == 3 && derived.Component("VelocityComponent") == null, "base nested overrides and component removal work");
+    Check(derived.SourceDefinition.Children[0].Name == "Base" && fixtureAssets.Entity("data/base.xml").SourceDefinition.Children.Any(c => c.Name == "Entity") && derived.DeferredComponents.Contains("LuaComponent"), "complete source nodes and deferred scripts remain data without execution");
+    File.WriteAllText(Path.Combine(xmlFixture, "data/cycle.xml"), "<Entity><Base file='data/cycle.xml'/></Entity>");
+    bool cycleRejected = false;
+    try { fixtureAssets.Entity("data/cycle.xml"); } catch (InvalidOperationException) { cycleRejected = true; }
+    Check(cycleRejected, "XML inheritance cycle fails explicitly");
+}
+finally { if (Directory.Exists(xmlFixture)) Directory.Delete(xmlFixture, true); }
+
+using(var addedCatalog=New()) {
+    var neutral=addedCatalog.DefaultConfiguration();
+    foreach(string effect in DebugModifiers.Effects.Concat(DebugModifiers.Tracking.Skip(4)).Where(s=>s.Length>0)) {
+        var test=SpellAudit.RunCase("BULLET",0,New,neutral,modifiers:new[]{effect});
+        Check(test.Plan!=null && test.Status!=SpellAuditStatus.ScriptError && test.Plan.Root.Projectiles.Count>0,"expanded debug modifier casts: "+effect);
+    }
+}
+// Expansion checks cover conservation, XML behavior and real host resource effects.
+var materialCatalog = new NoitaMaterialCatalog(data);
+Check(materialCatalog.Materials.Count > 200 && materialCatalog.Liquids.Length > 50, "original material catalog imports inherited liquid families");
+Check(materialCatalog.Get("poison").Kind == "liquid" && materialCatalog.Get("poison").Has("liquid") && materialCatalog.Get("magic_liquid_berserk").Status.Contains("BERSERK"), "material inheritance retains liquid identity and magical status");
+var flaskContents = new FlaskContents();
+Check(flaskContents.Add("water", 700) == 700 && flaskContents.Add("oil", 500) == 300 && flaskContents.Total == 1000, "mixed flask accepts only available capacity");
+var flaskCopy = flaskContents.Copy(); flaskCopy.Remove("water", 500);
+Check(flaskContents.Total == 1000 && flaskCopy.Total == 500 && flaskContents.Remove("oil", 900) == 300, "flask clone does not alias or overdraw its source");
+var grid = new MaterialGrid();
+bool Walls(int x, int y) => x < 0 || x >= 24 || y < 0 || y >= 16;
+Check(grid.Add(12, 1, "oil", 500, Walls) == 255 && grid.Add(12,1,"poison",40,Walls) == 0, "cells cap volume without replacing a different material");
+for (int x = 6; x < 18; x++) grid.Add(x, 0, "oil", 220, Walls);
+long beforeFlow = grid.Volume;
+for (int frame = 0; frame < 600; frame++) {
+    grid.Step(Walls, materialCatalog.Get, 48, frame);
+    Check(grid.Volume == beforeFlow && grid.Cells.All(c => c.Amount > 0 && c.Amount <= 255 && !Walls(c.X,c.Y)), "bounded flow conserves volume and stays inside the container");
+}
+Check(grid.Cells.Any(c=>c.Y==15), "liquid settles on the bottom of a basin");
+var persistedGrid = new MaterialGrid(); foreach(var cell in grid.Cells) persistedGrid.Add(cell.X,cell.Y,cell.Material,cell.Amount,Walls);
+Check(persistedGrid.Volume == grid.Volume && persistedGrid.Cells.OrderBy(c=>c.X).ThenBy(c=>c.Y).SequenceEqual(grid.Cells.OrderBy(c=>c.X).ThenBy(c=>c.Y)), "cell records recreate exact material identities and quantities");
+int poured = grid.Add(0,0,"acid",80,Walls); int taken = grid.Take(0,0,500);
+Check(poured==taken && grid.Volume==beforeFlow, "scoop and pour conserve accepted volume");
+var fullGrid=new MaterialGrid(); for(int i=0;i<MaterialGrid.MaximumCells;i++) fullGrid.Add(i,0,"oil",1,(_,_)=>false);
+Check(fullGrid.Add(MaterialGrid.MaximumCells,0,"oil",10,(_,_)=>false)==0 && fullGrid.Volume==MaterialGrid.MaximumCells, "cell budget refuses excess emission without modifying existing contents");
+var expansionAssets = new NoitaAssetCatalog(data);
+ComponentSpellProfile Profile(string name) => ComponentSpellProfile.Load(expansionAssets,"data/entities/projectiles/deck/"+name+".xml");
+Check(Profile("fireball").BlastDamage == 2 && Profile("fireball").BlastHurtsCaster && Profile("fireball").BlastMaterial=="fire", "fireball imports explosive damage, caster risk and fire creation");
+Check(Profile("heal_bullet").Healing > 0 && Profile("heal_bullet").Damage==0, "healing bullet is healing rather than generic damage");
+Check(Profile("cloud_water").Emissions.Any(e=>e.Material=="water" && e.Shape=="rain") && Profile("cloud_water").Visual.Lifetime==600, "nested cloud emitter and independent lifetime import");
+Check(Profile("sea_water").Emissions.Any(e=>e.Material=="water" && e.Shape=="sea") && Profile("sea_water").Visual.Lifetime==300, "sea emitter imports without requiring a ProjectileComponent");
+Check(Profile("orb_laseremitter_four").Beams.Count >= 1 && Profile("orb_laseremitter_cutter").Beams[0].Length==64, "plasma emitters import bounded ray geometry");
+Check(Profile("death_cross").HomingRange==350 && Profile("death_cross").BlastDamage==3 && Profile("death_cross").BlastRadius==25, "death cross retains seeking and delayed blast data");
+Check(Profile("regeneration_field").AreaRadius==28 && Profile("regeneration_field").Statuses.Any(p=>p.Contains("regeneration")), "field radius and status links survive base inheritance");
+var whiteHole=SpellEffectProfile.Load(expansionAssets,"data/entities/projectiles/deck/white_hole.xml");
+Check(whiteHole.Repels && !whiteHole.LargeHole, "white hole selects repulsion rather than attraction");
+Check(SpellEffectProfile.Load(expansionAssets,"data/entities/projectiles/deck/black_hole_giga.xml").Giga, "giga hole uses explicit large-hole adapter");
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("BLOOD_MAGIC"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Hp=4,MaxHp=4});
+    Check(cast.Events.Any(e=>e.Kind=="host_hp" && Math.Abs(e.Value.GetDouble()-3.84)<.00001), "blood magic records its real four-HP resource cost");
+}
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("MONEY_MAGIC"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Money=1000});
+    Check(cast.Events.Any(e=>e.Kind=="host_money_spent" && e.Value.GetDouble()==50) && cast.Root.Number("damage_projectile_add")==2, "money magic emits an actual wallet debit coupled to its damage bonus");
+}
+using(var resourceRuntime=New()) {
+    resourceRuntime.Configure(new(new[]{new SpellSlot("ZETA"),new SpellSlot("LIGHT_BULLET")}));
+    var cast=resourceRuntime.Cast(100,null,new CastHostContext{Wands=new(){new(){"BOMB"}}});
+    Check(cast.Root.Projectiles.Any(n=>n.Entity.EndsWith("/bomb.xml")), "Zeta reads the supplied second-wand inventory instead of a dummy entity");
+}
+using(var rngA=New()) using(var rngB=New()) {
+    var deck=new WandConfiguration(new[]{new SpellSlot("BOMB"),new SpellSlot("LIGHT_BULLET"),new SpellSlot("ARROW")},Shuffle:true);
+    rngA.Configure(deck);rngB.Configure(deck);
+    Check(rngA.Cast(100,null,new CastHostContext{Frame=123}).Root.Projectiles.Select(n=>n.Entity).SequenceEqual(rngB.Cast(100,null,new CastHostContext{Frame=123}).Root.Projectiles.Select(n=>n.Entity)), "equal snapshots produce reproducible shuffled casts");
+}
+Console.WriteLine($"PASS: {checks} checks against original Noita scripts");
+if (args.Length > 3) File.WriteAllText(args[3], JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
+return 0;
